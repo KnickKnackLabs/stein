@@ -16,6 +16,8 @@ class MemoryHistoryStore implements ConversationHistoryStore {
   readonly histories = new Map<string, readonly VisibleConversationMessage[]>();
   failure: unknown;
   shouldFail = false;
+  saveGate: Promise<void> | undefined;
+  saveStarted: (() => void) | undefined;
 
   async load(conversationId: string): Promise<readonly VisibleConversationMessage[]> {
     return structuredClone(this.histories.get(conversationId) ?? []);
@@ -24,7 +26,12 @@ class MemoryHistoryStore implements ConversationHistoryStore {
   async save(
     conversationId: string,
     history: readonly VisibleConversationMessage[],
+    signal: AbortSignal,
   ): Promise<void> {
+    signal.throwIfAborted();
+    this.saveStarted?.();
+    if (this.saveGate) await this.saveGate;
+    signal.throwIfAborted();
     if (this.shouldFail) throw this.failure;
     this.histories.set(conversationId, structuredClone(history));
   }
@@ -195,6 +202,55 @@ describe("ConversationRegistry", () => {
     expect(sessions[0]?.sessionManager.branches).toEqual([null]);
     expect(sessions[0]?.disposeCount).toBe(1);
     expect(historyStore.histories.size).toBe(0);
+  });
+
+  test("waits for rollback when aborted during visible-history save", async () => {
+    let releaseSave = () => {};
+    let markSaveStarted = () => {};
+    let releaseRollback = () => {};
+    let markRollbackStarted = () => {};
+    const historyStore = new MemoryHistoryStore();
+    historyStore.saveGate = new Promise<void>((resolve) => { releaseSave = resolve; });
+    const saveStarted = new Promise<void>((resolve) => { markSaveStarted = resolve; });
+    historyStore.saveStarted = markSaveStarted;
+    const rollbackGate = new Promise<void>((resolve) => { releaseRollback = resolve; });
+    const rollbackStarted = new Promise<void>((resolve) => { markRollbackStarted = resolve; });
+    const { registry, sessions } = harness((session, index) => {
+      if (index === 0) {
+        session.abortGate = rollbackGate;
+        session.abortStarted = markRollbackStarted;
+      }
+    }, historyStore);
+    const active = await registry.start("user", "chat", [user("first")]);
+    const consuming = consume(active.deltas);
+    const failed = consuming.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await saveStarted;
+
+    let abortFinished = false;
+    const aborting = active.abort().then(() => { abortFinished = true; });
+    await Promise.resolve();
+    expect(abortFinished).toBe(false);
+    expect(historyStore.histories.size).toBe(0);
+
+    releaseSave();
+    await rollbackStarted;
+    await Promise.resolve();
+    expect(abortFinished).toBe(false);
+    releaseRollback();
+    await aborting;
+    expect(await failed).toHaveProperty("name", "AbortError");
+    expect(sessions[0]?.sessionManager.branches).toEqual([null]);
+    expect(sessions[0]?.disposeCount).toBe(1);
+    expect(historyStore.histories.size).toBe(0);
+
+    historyStore.saveGate = undefined;
+    historyStore.saveStarted = undefined;
+    const retry = await registry.start("user", "chat", [user("retry")]);
+    expect(await consume(retry.deltas)).toBe("hello world");
+    expect(sessions).toHaveLength(2);
   });
 
   test("rolls back explicit abort and stream cancellation", async () => {

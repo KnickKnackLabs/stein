@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { FileConversationHistoryStore } from "../../src/conversation/file-history-store.ts";
 
 const roots: string[] = [];
+const activeSignal = (): AbortSignal => new AbortController().signal;
 
 async function temporaryDirectory(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "stein-visible-history-"));
@@ -25,14 +26,32 @@ describe("FileConversationHistoryStore", () => {
     const replacement = [{ role: "assistant" as const, content: "fictional response" }];
 
     expect(await store.load(conversationId)).toEqual([]);
-    await store.save(conversationId, first);
-    await store.save(conversationId, replacement);
+    await store.save(conversationId, first, activeSignal());
+    await store.save(conversationId, replacement, activeSignal());
 
     const path = join(directory, `${conversationId}.visible-history.json`);
     expect(await store.load(conversationId)).toEqual(replacement);
     expect(JSON.parse(await readFile(path, "utf8"))).toEqual(replacement);
     expect((await stat(directory)).mode & 0o777).toBe(0o700);
     expect((await stat(path)).mode & 0o777).toBe(0o600);
+    expect(await readdir(directory)).toEqual([`${conversationId}.visible-history.json`]);
+  });
+
+  test("does not replace visible history after cancellation", async () => {
+    const directory = join(await temporaryDirectory(), "history");
+    const store = new FileConversationHistoryStore(directory);
+    const conversationId = "b".repeat(64);
+    const committed = [{ role: "user" as const, content: "fictional question" }];
+    await store.save(conversationId, committed, activeSignal());
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(store.save(
+      conversationId,
+      [{ role: "assistant", content: "cancelled response" }],
+      controller.signal,
+    )).rejects.toHaveProperty("name", "AbortError");
+    expect(await store.load(conversationId)).toEqual(committed);
     expect(await readdir(directory)).toEqual([`${conversationId}.visible-history.json`]);
   });
 
@@ -56,8 +75,11 @@ describe("FileConversationHistoryStore", () => {
     await mkdir(join(directory, `${conversationId}.visible-history.json`), { recursive: true });
     const store = new FileConversationHistoryStore(directory);
 
-    await expect(store.save(conversationId, [{ role: "user", content: "question" }]))
-      .rejects.toBeDefined();
+    await expect(store.save(
+      conversationId,
+      [{ role: "user", content: "question" }],
+      activeSignal(),
+    )).rejects.toBeDefined();
     expect(await readdir(directory)).toEqual([`${conversationId}.visible-history.json`]);
   });
 
