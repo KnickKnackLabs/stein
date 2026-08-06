@@ -1,7 +1,6 @@
 import { chmod, mkdir, readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
-import { createPiSessionFactory } from "./pi-session.ts";
-import type { ModelDescription } from "./session-agent.ts";
+import { createPiSessionFactory, type ModelDescription } from "./pi-session.ts";
 
 export type SessionRunnerConfig = Readonly<{
   conversationId: string;

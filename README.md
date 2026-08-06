@@ -1,10 +1,11 @@
 # Stein
 
 Stein is a TypeScript harness for building applications around Pi sessions.
-The session-agent primitive wraps an injected Pi-like session with explicit
-conversation, model, prompt, and storage metadata. It accepts one text-and-
-attachment turn at a time, exposes ordered assistant text deltas as an async
-stream, and owns cancellation and disposal without reading attached files.
+The session agent binds one local conversation identity to an injected Pi
+session and owns turn sequencing, cancellation, and disposal. A focused turn
+module validates and serializes text plus attached content without exposing the
+conversation identifier to the model. A focused text-stream module bridges Pi
+events into ordered assistant deltas.
 
 The persistent Pi runtime resolves one explicitly configured model, disables
 tools and ambient resources, stores its JSONL under a private session directory,

@@ -6,7 +6,9 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { SessionAgent, type ModelDescription } from "./session-agent.ts";
+import { SessionAgent } from "./session-agent.ts";
+
+export type ModelDescription = Readonly<{ provider: string; id: string }>;
 
 export type PiSessionFactoryConfig = Readonly<{
   model: ModelDescription;
@@ -65,17 +67,7 @@ export function createPiSessionFactory(config: PiSessionFactoryConfig) {
       const reason = modelFallbackMessage ?? extensionsResult.errors.map((entry) => entry.error).join("; ");
       throw new Error(`Pi session initialization failed: ${reason}`);
     }
-    return new SessionAgent({
-      conversationId,
-      systemPrompt: config.systemPrompt,
-      model: config.model,
-      storage: {
-        sessionFile,
-        sessionDirectory: config.sessionDirectory,
-        workspaceDirectory: config.workspaceDirectory,
-      },
-      session,
-    });
+    return new SessionAgent({ conversationId, session });
   };
 }
 
