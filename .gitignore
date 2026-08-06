@@ -1,0 +1,7 @@
+# Local tool state
+mise.local.toml
+node_modules/
+
+# Runtime and editor noise
+*.log
+.DS_Store

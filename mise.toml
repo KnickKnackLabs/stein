@@ -1,0 +1,20 @@
+[settings]
+quiet = true
+task_output = "interleave"
+experimental = true
+
+[plugins]
+shiv = "https://github.com/KnickKnackLabs/vfox-shiv"
+
+[tools]
+"shiv:codebase" = "0.4"
+
+[_.codebase]
+name = "stein"
+lint = [
+  "mise-settings",
+  "mcr-scope",
+  "or-true",
+  "shellcheck",
+  "caller-pwd-contract",
+]
