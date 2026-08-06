@@ -5,9 +5,22 @@ import type {
   VisibleConversationMessage,
 } from "../../src/conversation/conversation-registry.ts";
 import { OpenAIChatService } from "../../src/openai/service.ts";
-import { SessionAgent, type PiSession } from "../../src/session/session-agent.ts";
+import {
+  SessionAgent,
+  type PiSession,
+  type PiSessionManager,
+} from "../../src/session/session-agent.ts";
+
+class FakeSessionManager implements PiSessionManager {
+  leafId: string | null = null;
+  getLeafId(): string | null { return this.leafId; }
+  branch(entryId: string): void { this.leafId = entryId; }
+  resetLeaf(): void { this.leafId = null; }
+  appendCustomEntry(): string { this.leafId = "rollback"; return this.leafId; }
+}
 
 class FakeSession implements PiSession {
+  readonly sessionManager = new FakeSessionManager();
   readonly prompts: string[] = [];
   readonly #listeners = new Set<(event: unknown) => void>();
   chunks: string[] = ["hello", " world"];
@@ -21,6 +34,7 @@ class FakeSession implements PiSession {
   }
   async prompt(input: string): Promise<void> {
     this.prompts.push(input);
+    this.sessionManager.leafId = `turn-${this.prompts.length}`;
     if (this.blocker) await this.blocker;
     for (const delta of this.chunks) {
       for (const listener of this.#listeners) {

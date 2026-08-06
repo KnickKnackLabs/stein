@@ -67,32 +67,57 @@ export class ConversationRegistry {
     }
 
     entry.busy = true;
+    let checkpoint: ReturnType<SessionAgent["checkpoint"]>;
     try {
       entry.agent ??= await this.#createAgent({ conversationId, userId, chatId });
+      checkpoint = entry.agent.checkpoint();
     } catch (error) {
       entry.busy = false;
       this.#entries.delete(conversationId);
+      entry.agent?.dispose();
       throw error;
     }
 
-    let removed = false;
-    const remove = async () => {
-      if (removed) return;
-      removed = true;
+    let phase: "active" | "committing" | "committed" | "removed" = "active";
+    const rollbackAndRemove = async (force = false) => {
+      if (phase === "removed" || phase === "committed") return;
+      if (phase === "committing" && !force) return;
+      phase = "removed";
       this.#entries.delete(conversationId);
-      await entry.agent?.abort().catch(() => {});
-      entry.agent?.dispose();
+      try {
+        await entry.agent!.rollback(checkpoint);
+      } finally {
+        entry.agent!.dispose();
+      }
     };
-    const deltas = this.#run(entry, conversationId, userMessage, remove, () => removed);
-    return { conversationId, deltas, abort: remove };
+    const beginCommit = () => {
+      if (phase !== "active") return false;
+      phase = "committing";
+      return true;
+    };
+    const finishCommit = () => {
+      if (phase !== "committing") throw new Error("Conversation turn left the committing phase");
+      phase = "committed";
+    };
+    const deltas = this.#run(
+      entry,
+      conversationId,
+      userMessage,
+      rollbackAndRemove,
+      beginCommit,
+      finishCommit,
+    );
+    const abort = () => rollbackAndRemove(false);
+    return { conversationId, deltas, abort };
   }
 
   async *#run(
     entry: Entry,
     conversationId: string,
     userMessage: ConversationMessage,
-    remove: () => Promise<void>,
-    wasRemoved: () => boolean,
+    rollbackAndRemove: (force?: boolean) => Promise<void>,
+    beginCommit: () => boolean,
+    finishCommit: () => void,
   ): AsyncIterable<string> {
     let output = "";
     try {
@@ -104,7 +129,7 @@ export class ConversationRegistry {
         output += delta;
         yield delta;
       }
-      if (wasRemoved()) return;
+      if (!beginCommit()) return;
       const history = [
         ...entry.history,
         { role: userMessage.role, content: userMessage.content } as const,
@@ -113,8 +138,13 @@ export class ConversationRegistry {
       await this.#historyStore.save(conversationId, history);
       entry.history = history;
       entry.busy = false;
+      finishCommit();
     } catch (error) {
-      await remove();
+      try {
+        await rollbackAndRemove(true);
+      } catch (rollbackError) {
+        throw new AggregateError([error, rollbackError], "Conversation turn failed and Pi session rollback also failed");
+      }
       throw error;
     }
   }

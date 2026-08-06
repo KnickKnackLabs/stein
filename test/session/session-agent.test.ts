@@ -3,11 +3,28 @@ import { join } from "node:path";
 import {
   SessionAgent,
   type PiSession,
+  type PiSessionManager,
   type PiSessionSetup,
   type SessionTurn,
 } from "../../src/session/session-agent.ts";
 
+class FakeSessionManager implements PiSessionManager {
+  leafId: string | null = null;
+  readonly branches: Array<string | null> = [];
+  readonly customEntries: Array<{ customType: string; data: unknown }> = [];
+
+  getLeafId(): string | null { return this.leafId; }
+  branch(entryId: string): void { this.branches.push(entryId); this.leafId = entryId; }
+  resetLeaf(): void { this.branches.push(null); this.leafId = null; }
+  appendCustomEntry(customType: string, data?: unknown): string {
+    this.customEntries.push({ customType, data });
+    this.leafId = `custom-${this.customEntries.length}`;
+    return this.leafId;
+  }
+}
+
 class FakeSession implements PiSession {
+  readonly sessionManager = new FakeSessionManager();
   readonly prompts: string[] = [];
   readonly #listeners = new Set<(event: unknown) => void>();
   responses: string[][] = [];
@@ -157,6 +174,35 @@ describe("SessionAgent", () => {
     expect(session.abortCount).toBe(1);
     expect(session.unsubscribeCount).toBe(1);
     releasePrompt();
+  });
+
+  test("checkpoints and durably rolls back to a prior leaf", async () => {
+    const session = new FakeSession();
+    session.sessionManager.leafId = "committed-leaf";
+    const agent = new SessionAgent({ ...setup(), session });
+    const checkpoint = agent.checkpoint();
+    session.sessionManager.leafId = "abandoned-leaf";
+
+    await agent.rollback(checkpoint);
+
+    expect(session.abortCount).toBe(1);
+    expect(session.sessionManager.branches).toEqual(["committed-leaf"]);
+    expect(session.sessionManager.customEntries).toEqual([{
+      customType: "stein.turn_rollback",
+      data: { checkpoint: "committed-leaf" },
+    }]);
+  });
+
+  test("rolls back a first turn to a new root", async () => {
+    const session = new FakeSession();
+    const agent = new SessionAgent({ ...setup(), session });
+    const checkpoint = agent.checkpoint();
+    session.sessionManager.leafId = "abandoned-leaf";
+
+    await agent.rollback(checkpoint);
+
+    expect(session.sessionManager.branches).toEqual([null]);
+    expect(session.sessionManager.customEntries[0]?.data).toEqual({ checkpoint: null });
   });
 
   test("delegates abort and disposes once", async () => {
