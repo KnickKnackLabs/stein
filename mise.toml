@@ -17,4 +17,5 @@ lint = [
   "or-true",
   "shellcheck",
   "caller-pwd-contract",
+  "github-actions",
 ]
