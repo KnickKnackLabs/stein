@@ -1,11 +1,13 @@
 # Stein
 
 Stein is a TypeScript harness for building applications around Pi sessions.
-The first runtime primitive wraps an injected Pi-like session, runs one prompt
-at a time, and exposes ordered assistant text deltas as an async stream.
+The session-agent primitive wraps an injected Pi-like session with explicit
+conversation, model, prompt, and storage metadata. It accepts one text-and-
+attachment turn at a time, exposes ordered assistant text deltas as an async
+stream, and owns cancellation and disposal without reading attached files.
 
-The real Pi SDK factory, transport adapters, persistence, prompts, and product
-behavior remain separate review boundaries.
+The real Pi SDK factory, conversation persistence, transport adapters, prompts,
+and product behavior remain separate review boundaries.
 
 ## Local checks
 
