@@ -1,0 +1,13 @@
+{
+  "name": "@knickknacklabs/stein",
+  "private": true,
+  "version": "0.0.0",
+  "description": "An intentionally behavior-free TypeScript Pi package skeleton.",
+  "keywords": [
+    "pi-package"
+  ],
+  "type": "module",
+  "pi": {
+    "extensions": []
+  }
+}

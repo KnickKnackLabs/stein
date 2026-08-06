@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Run local repository checks"
+#MISE dir="{{config_root}}"
+set -euo pipefail
+
+exec codebase lint "$MISE_CONFIG_ROOT"
