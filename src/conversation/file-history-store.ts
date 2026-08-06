@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { renameSync } from "node:fs";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import type {
   ConversationHistoryStore,
@@ -35,14 +36,18 @@ export class FileConversationHistoryStore implements ConversationHistoryStore {
   async save(
     conversationId: string,
     history: readonly VisibleConversationMessage[],
+    signal: AbortSignal,
   ): Promise<void> {
     const destination = this.#path(conversationId);
     if (!history.every(isVisibleMessage)) {
       throw new Error(`Invalid visible conversation history for ${conversationId}`);
     }
 
+    signal.throwIfAborted();
     await mkdir(this.#directory, { recursive: true, mode: 0o700 });
+    signal.throwIfAborted();
     await chmod(this.#directory, 0o700);
+    signal.throwIfAborted();
     const temporary = `${destination}.${process.pid}.${randomUUID()}.tmp`;
     try {
       await writeFile(temporary, `${JSON.stringify(history, null, 2)}\n`, {
@@ -50,7 +55,9 @@ export class FileConversationHistoryStore implements ConversationHistoryStore {
         flag: "wx",
         mode: 0o600,
       });
-      await rename(temporary, destination);
+      // Keep cancellation and atomic replacement in one synchronous turn.
+      signal.throwIfAborted();
+      renameSync(temporary, destination);
     } finally {
       await rm(temporary, { force: true }).catch(() => undefined);
     }

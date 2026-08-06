@@ -14,9 +14,11 @@ export type VisibleConversationMessage = Readonly<{
 
 export interface ConversationHistoryStore {
   load(conversationId: string): Promise<readonly VisibleConversationMessage[]>;
+  // Success is the turn commit point; abort before replacement must reject.
   save(
     conversationId: string,
     history: readonly VisibleConversationMessage[],
+    signal: AbortSignal,
   ): Promise<void>;
 }
 
@@ -90,13 +92,17 @@ export class Conversation {
     }
   }
 
-  async commit(userMessage: ConversationMessage, assistantContent: string): Promise<void> {
+  async commit(
+    userMessage: ConversationMessage,
+    assistantContent: string,
+    signal: AbortSignal,
+  ): Promise<void> {
     const history: VisibleConversationMessage[] = [
       ...this.#history,
       { role: "user", content: userMessage.content },
       { role: "assistant", content: assistantContent },
     ];
-    await this.#historyStore.save(this.conversationId, history);
+    await this.#historyStore.save(this.conversationId, history, signal);
     this.#history = history;
     this.#active = false;
   }
@@ -122,8 +128,9 @@ class ActiveConversationTurn implements ConversationTurn {
   readonly #agent: SessionAgent;
   readonly #userMessage: ConversationMessage;
   readonly #checkpoint: SessionCheckpoint;
-  #commitStarted = false;
-  #finished = false;
+  #phase: "responding" | "saving" | "finished" = "responding";
+  readonly #abortController = new AbortController();
+  #savePromise: Promise<void> | undefined;
   #rollbackPromise: Promise<void> | undefined;
 
   constructor(
@@ -140,14 +147,23 @@ class ActiveConversationTurn implements ConversationTurn {
     this.deltas = this.#respond();
   }
 
-  abort(): Promise<void> {
+  async abort(): Promise<void> {
     if (this.#rollbackPromise) return this.#rollbackPromise;
-    if (this.#commitStarted) return Promise.resolve();
-    return this.#rollback();
+    if (this.#phase === "finished") return;
+    if (this.#phase === "responding") return this.#rollback();
+
+    this.#abortController.abort();
+    const savePromise = this.#savePromise;
+    if (!savePromise) return this.#rollback();
+    try {
+      await savePromise;
+    } catch {
+      return this.#rollback();
+    }
   }
 
   async *#respond(): AsyncIterable<string> {
-    if (this.#finished) return;
+    if (this.#phase === "finished") return;
     let output = "";
     try {
       for await (const delta of this.#agent.respond({
@@ -159,10 +175,15 @@ class ActiveConversationTurn implements ConversationTurn {
         yield delta;
       }
 
-      if (this.#finished) return;
-      this.#commitStarted = true;
-      await this.#conversation.commit(this.#userMessage, output);
-      this.#finished = true;
+      if (this.#phase !== "responding") return;
+      this.#phase = "saving";
+      this.#savePromise = this.#conversation.commit(
+        this.#userMessage,
+        output,
+        this.#abortController.signal,
+      );
+      await this.#savePromise;
+      this.#phase = "finished";
     } catch (error) {
       try {
         await this.#rollback();
@@ -174,15 +195,15 @@ class ActiveConversationTurn implements ConversationTurn {
       }
       throw error;
     } finally {
-      if (!this.#finished && !this.#commitStarted) await this.#rollback();
+      if (this.#phase !== "finished") await this.#rollback();
     }
   }
 
   #rollback(): Promise<void> {
     if (this.#rollbackPromise) return this.#rollbackPromise;
-    if (this.#finished) return Promise.resolve();
+    if (this.#phase === "finished") return Promise.resolve();
 
-    this.#finished = true;
+    this.#phase = "finished";
     this.#rollbackPromise = this.#conversation.rollback(this.#agent, this.#checkpoint);
     return this.#rollbackPromise;
   }
