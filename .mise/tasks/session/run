@@ -1,0 +1,22 @@
+#!/usr/bin/env bun
+//MISE description="Run one persistent Pi session turn"
+//MISE dir="{{config_root}}"
+//USAGE flag "--pi-model <pi_model>" required=#true help="Explicit Pi model as PROVIDER/MODEL"
+//USAGE flag "--system-prompt-file <system_prompt_file>" required=#true help="Private system-prompt text file"
+//USAGE flag "--prompt-file <prompt_file>" required=#true help="Private user-prompt text file"
+//USAGE flag "--workspace <workspace>" required=#true help="Absolute Pi workspace directory"
+//USAGE flag "--session-dir <session_dir>" required=#true help="Absolute private Pi session directory"
+//USAGE flag "--agent-dir <agent_dir>" required=#true help="Absolute Pi agent/config directory"
+//USAGE flag "--conversation-id <conversation_id>" required=#true help="Safe persistent conversation identifier"
+
+import {
+  runSession,
+  sessionRunnerConfigFromMiseEnvironment,
+} from "../../../src/session/session-runner.ts";
+
+process.umask(0o077);
+runSession(sessionRunnerConfigFromMiseEnvironment()).catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`error: ${message}\n`);
+  process.exit(1);
+});

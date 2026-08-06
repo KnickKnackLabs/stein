@@ -1,8 +1,7 @@
-export interface PiSessionBackend {
+export interface SessionTextSource {
   subscribe(listener: (event: unknown) => void): () => void;
   prompt(input: string): Promise<void>;
   abort?(): Promise<void>;
-  dispose(): void;
 }
 
 type Waiter = {
@@ -64,63 +63,41 @@ class AsyncTextQueue implements AsyncIterable<string> {
   }
 }
 
-export class PiSessionStream {
-  readonly #session: PiSessionBackend;
-  #active = false;
-  #disposed = false;
+export async function* streamSessionText(
+  session: SessionTextSource,
+  input: string,
+): AsyncIterable<string> {
+  const output = new AsyncTextQueue();
+  const unsubscribe = session.subscribe((event) => {
+    const delta = textDelta(event);
+    if (delta !== undefined) output.push(delta);
+  });
 
-  constructor(session: PiSessionBackend) {
-    this.#session = session;
+  let completion: Promise<void>;
+  try {
+    completion = session.prompt(input);
+  } catch (error) {
+    unsubscribe();
+    throw error;
   }
+  let completionSettled = false;
+  completion.then(
+    () => {
+      completionSettled = true;
+      output.close();
+    },
+    (error: unknown) => {
+      completionSettled = true;
+      output.fail(error);
+    },
+  );
 
-  async *run(prompt: string): AsyncIterable<string> {
-    if (this.#disposed) throw new Error("Pi session stream is disposed");
-    if (this.#active) throw new Error("Pi session stream already has an active turn");
-    if (!prompt.trim()) throw new Error("Prompt must not be empty");
-
-    this.#active = true;
-    const output = new AsyncTextQueue();
-    let unsubscribe: () => void;
-    try {
-      unsubscribe = this.#session.subscribe((event) => {
-        const delta = textDelta(event);
-        if (delta !== undefined) output.push(delta);
-      });
-    } catch (error) {
-      this.#active = false;
-      throw error;
-    }
-
-    let completion: Promise<void>;
-    try {
-      completion = this.#session.prompt(prompt);
-    } catch (error) {
-      unsubscribe();
-      this.#active = false;
-      throw error;
-    }
-    completion.then(() => output.close(), (error: unknown) => output.fail(error));
-
-    let completed = false;
-    try {
-      for await (const chunk of output) yield chunk;
-      await completion;
-      completed = true;
-    } finally {
-      unsubscribe();
-      if (!completed) await this.#session.abort?.();
-      this.#active = false;
-    }
-  }
-
-  async abort(): Promise<void> {
-    await this.#session.abort?.();
-  }
-
-  dispose(): void {
-    if (this.#disposed) return;
-    this.#disposed = true;
-    this.#session.dispose();
+  try {
+    for await (const chunk of output) yield chunk;
+    await completion;
+  } finally {
+    unsubscribe();
+    if (!completionSettled) await session.abort?.();
   }
 }
 
