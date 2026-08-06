@@ -13,8 +13,10 @@ and never substitutes a fallback model silently. The conversation layer adds
 private identity, visible-history continuity, one active turn, and rollback when
 a turn does not reach its visible-history commit.
 
-Transport adapters, product prompts, and product behavior remain separate review
-boundaries.
+The OpenAI-compatible adapter accepts authenticated streaming chat requests,
+maps Open WebUI user and chat headers to one conversation, and rolls a turn back
+when the request or response stream is cancelled. Deployment, product prompts,
+and product behavior remain separate review boundaries.
 
 ## Run one session
 
@@ -48,8 +50,29 @@ prior Pi branch before the registry permits a new session for that identity.
 
 `FileConversationHistoryStore` atomically replaces mode-0600 history files in a
 mode-0700 directory. It stores only visible user and assistant role/content
-pairs. This library boundary does not add transport, deployment, or product
-policy.
+pairs.
+
+## Serve OpenAI-compatible chat
+
+Prepare private service-token and system-prompt files, then start the local
+service with explicit runtime inputs:
+
+```sh
+mise run serve -- \
+  --listen 127.0.0.1:8787 \
+  --service-token-file /absolute/private/token \
+  --pi-model provider/model \
+  --system-prompt-file /absolute/private/system.md \
+  --workspace /absolute/workspace \
+  --session-dir /absolute/private/sessions \
+  --agent-dir /absolute/pi-agent
+```
+
+`GET /health` is public. `GET /v1/models` and streaming
+`POST /v1/chat/completions` require the configured bearer token. Chat requests
+also require `x-openwebui-user-id` and `x-openwebui-chat-id`; Stein hashes those
+values into a private local conversation identity and does not pass them to the
+model.
 
 ## Local checks
 
