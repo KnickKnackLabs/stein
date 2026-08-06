@@ -1,0 +1,252 @@
+import { describe, expect, test } from "bun:test";
+import type {
+  ConversationHistoryStore,
+  ConversationMessage,
+  VisibleConversationMessage,
+} from "../../src/conversation/conversation.ts";
+import type { ConversationIdentity } from "../../src/conversation/conversation-registry.ts";
+import { OpenAIChatService } from "../../src/openai/chat-service.ts";
+import { SessionAgent } from "../../src/session/session-agent.ts";
+import { FakePiSession } from "../support/fake-pi-session.ts";
+
+class MemoryHistoryStore implements ConversationHistoryStore {
+  readonly histories = new Map<string, readonly VisibleConversationMessage[]>();
+
+  async load(conversationId: string): Promise<readonly VisibleConversationMessage[]> {
+    return structuredClone(this.histories.get(conversationId) ?? []);
+  }
+
+  async save(
+    conversationId: string,
+    history: readonly VisibleConversationMessage[],
+  ): Promise<void> {
+    this.histories.set(conversationId, structuredClone(history));
+  }
+}
+
+function harness(configure?: (session: FakePiSession, index: number) => void) {
+  const identities: ConversationIdentity[] = [];
+  const sessions: FakePiSession[] = [];
+  const historyStore = new MemoryHistoryStore();
+  const service = new OpenAIChatService({
+    historyStore,
+    bearerToken: "test-token",
+    modelId: "test/deterministic",
+    async createAgent(identity) {
+      identities.push(identity);
+      const session = new FakePiSession();
+      session.defaultResponse = ["hello", " world"];
+      configure?.(session, sessions.length);
+      sessions.push(session);
+      return new SessionAgent({ conversationId: identity.conversationId, session });
+    },
+  });
+  return { service, identities, sessions, historyStore };
+}
+
+function request(path: string, init: RequestInit = {}): Request {
+  const headers = new Headers(init.headers);
+  if (path !== "/health") headers.set("authorization", "Bearer test-token");
+  return new Request(`http://localhost${path}`, { ...init, headers });
+}
+
+function chat(
+  messages: readonly unknown[],
+  headers: Readonly<Record<string, string>> = {},
+): Request {
+  return request("/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-openwebui-user-id": "fictional-user",
+      "x-openwebui-chat-id": "fictional-chat",
+      ...headers,
+    },
+    body: JSON.stringify({
+      model: "test/deterministic",
+      stream: true,
+      messages,
+    }),
+  });
+}
+
+function user(
+  content: string,
+  attachments: ConversationMessage["attachments"] = [],
+): ConversationMessage {
+  return { role: "user", content, attachments };
+}
+
+function assistant(content: string): Readonly<{ role: "assistant"; content: string }> {
+  return { role: "assistant", content };
+}
+
+function dataEvents(body: string): Array<Record<string, unknown>> {
+  return body
+    .split("\n\n")
+    .filter((event) => event.startsWith("data: ") && event !== "data: [DONE]")
+    .map((event) => JSON.parse(event.slice("data: ".length)) as Record<string, unknown>);
+}
+
+describe("OpenAIChatService", () => {
+  test("exposes health and protects every model endpoint", async () => {
+    const { service } = harness();
+    expect((await service.fetch(request("/health"))).status).toBe(200);
+
+    const unauthorized = await service.fetch(
+      new Request("http://localhost/v1/models"),
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const wrongToken = await service.fetch(new Request("http://localhost/v1/models", {
+      headers: { authorization: "Bearer wrong-token" },
+    }));
+    expect(wrongToken.status).toBe(401);
+
+    const models = await service.fetch(request("/v1/models"));
+    expect(await models.json()).toEqual({
+      object: "list",
+      data: [{ id: "test/deterministic", object: "model", owned_by: "stein" }],
+    });
+  });
+
+  test("requires explicit Open WebUI identity and valid JSON", async () => {
+    const { service } = harness();
+    const missingIdentity = await service.fetch(request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "test/deterministic",
+        stream: true,
+        messages: [user("hello")],
+      }),
+    }));
+    expect(missingIdentity.status).toBe(400);
+
+    const invalidJson = await service.fetch(request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-openwebui-user-id": "fictional-user",
+        "x-openwebui-chat-id": "fictional-chat",
+      },
+      body: "not-json",
+    }));
+    expect(invalidJson.status).toBe(400);
+  });
+
+  test("streams ordered chunks and forwards attached text", async () => {
+    const { service, identities, sessions } = harness();
+    const attachment = { name: "fictional.txt", text: "Already-present text" };
+    const response = await service.fetch(chat([user("hello", [attachment])]));
+
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const body = await response.text();
+    expect(body.endsWith("data: [DONE]\n\n")).toBe(true);
+    const events = dataEvents(body) as Array<{
+      choices: Array<{ delta: { content?: string } }>;
+    }>;
+    expect(events
+      .map((event) => event.choices[0]?.delta.content)
+      .filter(Boolean)).toEqual(["hello", " world"]);
+    expect(identities).toHaveLength(1);
+    expect(JSON.parse(sessions[0]?.prompts[0] ?? "")).toEqual({
+      userText: "hello",
+      attachments: [attachment],
+    });
+  });
+
+  test("accepts an attachment-only user turn", async () => {
+    const { service, sessions } = harness();
+    const attachment = { name: "fictional.txt", text: "Already-present text" };
+    const response = await service.fetch(chat([user("  ", [attachment])]));
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(JSON.parse(sessions[0]?.prompts[0] ?? "")).toEqual({
+      userText: "  ",
+      attachments: [attachment],
+    });
+  });
+
+  test("maps an overlapping conversation turn to conflict", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { service } = harness((session) => {
+      session.defaultResponse = [];
+      session.promptGate = gate;
+    });
+    const first = await service.fetch(chat([user("first")]));
+    await Promise.resolve();
+
+    const overlap = await service.fetch(chat([user("overlap")]));
+    expect(overlap.status).toBe(409);
+    release();
+    await first.text();
+  });
+
+  test("maps a divergent visible history to conflict", async () => {
+    const { service } = harness();
+    const first = await service.fetch(chat([user("first")]));
+    await first.text();
+
+    const divergent = await service.fetch(chat([
+      user("different"),
+      assistant("hello world"),
+      user("second"),
+    ]));
+    expect(divergent.status).toBe(409);
+  });
+
+  test("rolls back a turn when the request was already aborted", async () => {
+    const { service, sessions } = harness();
+    const controller = new AbortController();
+    controller.abort();
+    const response = await service.fetch(new Request(chat([user("first")]), {
+      signal: controller.signal,
+    }));
+
+    await response.text().catch(() => "aborted");
+    await Bun.sleep(0);
+    expect(sessions[0]?.abortCount).toBe(1);
+    expect(sessions[0]?.disposeCount).toBe(1);
+  });
+
+  test("rolls back when the active request is aborted", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { service, sessions } = harness((session) => {
+      session.defaultResponse = [];
+      session.promptGate = gate;
+      session.releasePrompt = release;
+    });
+    const controller = new AbortController();
+    const response = await service.fetch(new Request(chat([user("first")]), {
+      signal: controller.signal,
+    }));
+    const body = response.text().catch(() => "aborted");
+
+    controller.abort();
+    await body;
+    expect(sessions[0]?.abortCount).toBeGreaterThanOrEqual(1);
+    expect(sessions[0]?.disposeCount).toBe(1);
+  });
+
+  test("rolls back when the response reader cancels", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { service, sessions } = harness((session) => {
+      session.defaultResponse = [];
+      session.promptGate = gate;
+      session.releasePrompt = release;
+    });
+    const response = await service.fetch(chat([user("first")]));
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+
+    await reader?.read();
+    await reader?.cancel();
+    expect(sessions[0]?.abortCount).toBeGreaterThanOrEqual(1);
+    expect(sessions[0]?.disposeCount).toBe(1);
+  });
+});

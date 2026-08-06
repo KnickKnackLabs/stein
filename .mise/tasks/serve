@@ -1,0 +1,20 @@
+#!/usr/bin/env bun
+//MISE description="Serve the OpenAI-compatible Stein session service"
+//MISE dir="{{config_root}}"
+//USAGE flag "--listen <listen>" required=#true help="Listen address as HOST:PORT"
+//USAGE flag "--service-token-file <service_token_file>" required=#true help="Private file containing the bearer token"
+//USAGE flag "--pi-model <pi_model>" required=#true help="Explicit Pi model as PROVIDER/MODEL"
+//USAGE flag "--system-prompt-file <system_prompt_file>" required=#true help="Private system-prompt text file"
+//USAGE flag "--workspace <workspace>" required=#true help="Absolute Pi workspace directory"
+//USAGE flag "--session-dir <session_dir>" required=#true help="Absolute private Pi session directory"
+//USAGE flag "--agent-dir <agent_dir>" required=#true help="Absolute Pi agent/config directory"
+
+import { serverConfigFromMiseEnvironment } from "../../src/server/server-config.ts";
+import { runServer } from "../../src/server/server-runner.ts";
+
+process.umask(0o077);
+runServer(serverConfigFromMiseEnvironment()).catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`error: ${message}\n`);
+  process.exit(1);
+});
