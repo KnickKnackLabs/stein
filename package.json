@@ -2,12 +2,21 @@
   "name": "@knickknacklabs/stein",
   "private": true,
   "version": "0.0.0",
-  "description": "An intentionally behavior-free TypeScript Pi package skeleton.",
+  "description": "A TypeScript harness for building applications around Pi sessions.",
   "keywords": [
     "pi-package"
   ],
   "type": "module",
+  "scripts": {
+    "check": "bun run typecheck && bun test",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
   "pi": {
     "extensions": []
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.2",
+    "typescript": "5.9.3"
   }
 }

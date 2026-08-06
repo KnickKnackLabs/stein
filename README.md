@@ -1,8 +1,11 @@
 # Stein
 
-Stein is being shaped as a TypeScript package for Pi. It currently contains no
-extension or application behavior. The first repository slices establish one
-reviewable development contract at a time.
+Stein is a TypeScript harness for building applications around Pi sessions.
+The first runtime primitive wraps an injected Pi-like session, runs one prompt
+at a time, and exposes ordered assistant text deltas as an async stream.
+
+The real Pi SDK factory, transport adapters, persistence, prompts, and product
+behavior remain separate review boundaries.
 
 ## Local checks
 
@@ -14,9 +17,9 @@ mise install
 mise run check
 ```
 
-`mise run check` applies the repository's configured
+`mise run check` runs strict TypeScript checking, deterministic Bun tests,
 [KnickKnackLabs/codebase](https://github.com/KnickKnackLabs/codebase) convention
-lints. CI, runtime behavior, and Pi resources remain later review boundaries.
+lints, and a whitespace check. CI invokes this same public command.
 
 An optional local pre-commit hook can run the same configured lints:
 
