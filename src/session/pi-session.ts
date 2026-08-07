@@ -13,7 +13,6 @@ export type ModelDescription = Readonly<{ provider: string; id: string }>;
 
 export type PiSessionRecovery = Readonly<{
   committedLeafId: string | null;
-  committedMessageRoles: readonly ("user" | "assistant")[];
 }>;
 
 export type PiSessionFactoryConfig = Readonly<{
@@ -101,9 +100,6 @@ export function openSessionManagerForRecovery(
   if (recovery === undefined) return sessionManager;
 
   if (recovery.committedLeafId === null) {
-    if (recovery.committedMessageRoles.length > 0) {
-      throw new Error("Visible conversation history does not match committed Pi root");
-    }
     sessionManager.resetLeaf();
     return sessionManager;
   }
@@ -114,15 +110,6 @@ export function openSessionManagerForRecovery(
       `Committed Pi session leaf is unavailable: ${recovery.committedLeafId}`,
       { cause: error },
     );
-  }
-  const branchMessageRoles = sessionManager.getBranch()
-    .filter((entry) => entry.type === "message")
-    .map((entry) => entry.message.role);
-  if (
-    branchMessageRoles.length !== recovery.committedMessageRoles.length ||
-    branchMessageRoles.some((role, index) => role !== recovery.committedMessageRoles[index])
-  ) {
-    throw new Error("Visible conversation history does not match committed Pi branch");
   }
   return sessionManager;
 }

@@ -20,7 +20,7 @@ type Harness = Readonly<{
 }>;
 
 async function harness(): Promise<Harness> {
-  const root = await mkdtemp(join(tmpdir(), "ghl-conversation-recovery-"));
+  const root = await mkdtemp(join(tmpdir(), "stein-conversation-recovery-"));
   roots.push(root);
   const sessionDirectory = join(root, "sessions");
   const workspaceDirectory = join(root, "workspace");
@@ -78,10 +78,7 @@ function reopen(
     state.sessionFile,
     state.sessionDirectory,
     state.workspaceDirectory,
-    {
-      committedLeafId: snapshot.committedLeafId,
-      committedMessageRoles: snapshot.messages.map(({ role }) => role),
-    },
+    { committedLeafId: snapshot.committedLeafId },
   );
 }
 
@@ -181,21 +178,6 @@ describe("committed conversation recovery", () => {
 
     expect(reopened.getLeafId()).toBe(latestLeafId);
     expect(context(reopened)).toContain("standalone assistant");
-  });
-
-  test("fails closed when snapshot messages do not match the committed branch", async () => {
-    const state = await harness();
-    const manager = SessionManager.open(
-      state.sessionFile,
-      state.sessionDirectory,
-      state.workspaceDirectory,
-    );
-    appendTurn(manager, "first");
-    const secondLeafId = appendTurn(manager, "second");
-
-    expect(() => reopen(state, snapshot("first", secondLeafId))).toThrow(
-      "Visible conversation history does not match committed Pi branch",
-    );
   });
 
   test("fails closed for a missing session file and an unknown committed leaf", async () => {

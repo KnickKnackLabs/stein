@@ -27,10 +27,7 @@ export async function runServer(config: ServerConfig): Promise<never> {
     modelId,
     historyStore: new FileConversationHistoryStore(config.sessionDirectory),
     createAgent: ({ conversationId }, snapshot) =>
-      createSession(conversationId, {
-        committedLeafId: snapshot.committedLeafId,
-        committedMessageRoles: snapshot.messages.map(({ role }) => role),
-      }),
+      createSession(conversationId, { committedLeafId: snapshot.committedLeafId }),
   });
   const server = Bun.serve({
     hostname: config.hostname,
