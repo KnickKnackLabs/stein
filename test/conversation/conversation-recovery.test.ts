@@ -40,9 +40,17 @@ async function harness(): Promise<Harness> {
 
 function appendTurn(manager: SessionManager, label: string): string {
   manager.appendMessage({ role: "user", content: `${label} user`, timestamp: Date.now() });
+  return appendAssistant(manager, `${label} assistant`, "stop");
+}
+
+function appendAssistant(
+  manager: SessionManager,
+  content: string,
+  stopReason: "stop" | "error",
+): string {
   return manager.appendMessage({
     role: "assistant",
-    content: [{ type: "text", text: `${label} assistant` }],
+    content: [{ type: "text", text: content }],
     api: "openai-completions",
     provider: "test",
     model: "deterministic",
@@ -54,7 +62,8 @@ function appendTurn(manager: SessionManager, label: string): string {
       totalTokens: 0,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
-    stopReason: "stop",
+    stopReason,
+    errorMessage: stopReason === "error" ? "fictional retryable failure" : undefined,
     timestamp: Date.now(),
   } as SessionMessage);
 }
@@ -142,6 +151,42 @@ describe("committed conversation recovery", () => {
     expect(recovered.getLeafId()).toBe(committedLeafId);
     expect(context(recovered)).toContain("first assistant");
     expect(context(recovered)).toContain("second assistant");
+  });
+
+  test("restores a committed retry without interpreting Pi message cardinality", async () => {
+    const state = await harness();
+    const manager = SessionManager.open(
+      state.sessionFile,
+      state.sessionDirectory,
+      state.workspaceDirectory,
+    );
+    manager.appendMessage({
+      role: "user",
+      content: "retried user",
+      timestamp: Date.now(),
+    });
+    appendAssistant(manager, "retryable error", "error");
+    const committedLeafId = appendAssistant(manager, "retried assistant", "stop");
+    const committed: ConversationHistorySnapshot = {
+      version: 1,
+      messages: [
+        { role: "user", content: "retried user" },
+        { role: "assistant", content: "retried assistant" },
+      ],
+      committedLeafId,
+    };
+    await state.historyStore.save(state.conversationId, committed, activeSignal());
+
+    const stored = await state.historyStore.load(state.conversationId);
+    const recovered = reopen(state, stored);
+    const persistedMessageRoles = recovered.getBranch()
+      .filter((entry) => entry.type === "message")
+      .map((entry) => entry.message.role);
+
+    expect(stored.messages).toHaveLength(2);
+    expect(persistedMessageRoles).toEqual(["user", "assistant", "assistant"]);
+    expect(recovered.getLeafId()).toBe(committedLeafId);
+    expect(context(recovered)).toContain("retried assistant");
   });
 
   test("missing snapshot resets an abandoned first turn to committed root", async () => {
