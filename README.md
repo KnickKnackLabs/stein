@@ -44,13 +44,17 @@ themes, or ambient context.
 
 `ConversationRegistry` resolves user and chat identity to one `Conversation`.
 The conversation checks the caller's visible history, reserves one turn, streams
-through its `SessionAgent`, and commits by saving the next visible history.
-Model failure, active abort or cancellation, and history-save failure restore the
-prior Pi branch before the registry permits a new session for that identity.
+through its `SessionAgent`, and commits by saving the next visible history with
+the post-response Pi leaf. Model failure, active abort or cancellation, and
+history-save failure restore the prior Pi branch before the registry permits a
+new session for that identity.
 
-`FileConversationHistoryStore` atomically replaces mode-0600 history files in a
-mode-0700 directory. It stores only visible user and assistant role/content
-pairs.
+`FileConversationHistoryStore` atomically replaces mode-0600 versioned snapshots
+in a mode-0700 directory. Each snapshot stores visible user and assistant
+role/content pairs plus the committed Pi leaf. After a process restart, Stein
+restores that leaf before Pi builds model context, excluding entries abandoned
+before snapshot replacement. This is process-crash recovery, not a power-loss
+durability or multi-process safety guarantee.
 
 ## Serve OpenAI-compatible chat
 

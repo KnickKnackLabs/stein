@@ -26,7 +26,11 @@ export async function runServer(config: ServerConfig): Promise<never> {
     bearerToken: bearerToken.trim(),
     modelId,
     historyStore: new FileConversationHistoryStore(config.sessionDirectory),
-    createAgent: ({ conversationId }) => createSession(conversationId),
+    createAgent: ({ conversationId }, snapshot) =>
+      createSession(conversationId, {
+        committedLeafId: snapshot.committedLeafId,
+        committedMessageRoles: snapshot.messages.map(({ role }) => role),
+      }),
   });
   const server = Bun.serve({
     hostname: config.hostname,

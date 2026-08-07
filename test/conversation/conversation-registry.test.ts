@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   ConversationConflictError,
+  emptyConversationHistorySnapshot,
+  type ConversationHistorySnapshot,
   type ConversationHistoryStore,
   type ConversationMessage,
-  type VisibleConversationMessage,
 } from "../../src/conversation/conversation.ts";
 import {
   ConversationRegistry,
@@ -13,19 +14,21 @@ import { SessionAgent } from "../../src/session/session-agent.ts";
 import { FakePiSession } from "../support/fake-pi-session.ts";
 
 class MemoryHistoryStore implements ConversationHistoryStore {
-  readonly histories = new Map<string, readonly VisibleConversationMessage[]>();
+  readonly snapshots = new Map<string, ConversationHistorySnapshot>();
   failure: unknown;
   shouldFail = false;
   saveGate: Promise<void> | undefined;
   saveStarted: (() => void) | undefined;
 
-  async load(conversationId: string): Promise<readonly VisibleConversationMessage[]> {
-    return structuredClone(this.histories.get(conversationId) ?? []);
+  async load(conversationId: string): Promise<ConversationHistorySnapshot> {
+    return structuredClone(
+      this.snapshots.get(conversationId) ?? emptyConversationHistorySnapshot(),
+    );
   }
 
   async save(
     conversationId: string,
-    history: readonly VisibleConversationMessage[],
+    snapshot: ConversationHistorySnapshot,
     signal: AbortSignal,
   ): Promise<void> {
     signal.throwIfAborted();
@@ -33,7 +36,7 @@ class MemoryHistoryStore implements ConversationHistoryStore {
     if (this.saveGate) await this.saveGate;
     signal.throwIfAborted();
     if (this.shouldFail) throw this.failure;
-    this.histories.set(conversationId, structuredClone(history));
+    this.snapshots.set(conversationId, structuredClone(snapshot));
   }
 }
 
@@ -42,16 +45,18 @@ function harness(
   historyStore = new MemoryHistoryStore(),
 ) {
   const identities: ConversationIdentity[] = [];
+  const committedLeaves: Array<string | null> = [];
   const sessions: FakePiSession[] = [];
-  const registry = new ConversationRegistry(async (identity) => {
+  const registry = new ConversationRegistry(async (identity, snapshot) => {
     identities.push(identity);
+    committedLeaves.push(snapshot.committedLeafId);
     const session = new FakePiSession();
     session.defaultResponse = ["hello", " world"];
     configure?.(session, sessions.length);
     sessions.push(session);
     return new SessionAgent({ conversationId: identity.conversationId, session });
   }, historyStore);
-  return { registry, identities, sessions, historyStore };
+  return { registry, identities, committedLeaves, sessions, historyStore };
 }
 
 const user = (
@@ -75,10 +80,14 @@ describe("ConversationRegistry", () => {
     const { registry, identities, sessions, historyStore } = harness();
     const first = await registry.start("user", "chat", [user("first")]);
     expect(await consume(first.deltas)).toBe("hello world");
-    expect(historyStore.histories.get(first.conversationId)).toEqual([
-      { role: "user", content: "first" },
-      { role: "assistant", content: "hello world" },
-    ]);
+    expect(historyStore.snapshots.get(first.conversationId)).toEqual({
+      version: 1,
+      messages: [
+        { role: "user", content: "first" },
+        { role: "assistant", content: "hello world" },
+      ],
+      committedLeafId: "session-1",
+    });
 
     const second = await registry.start("user", "chat", [
       user("first"),
@@ -108,6 +117,7 @@ describe("ConversationRegistry", () => {
     ]);
 
     expect(await consume(continued.deltas)).toBe("hello world");
+    expect(restarted.committedLeaves).toEqual(["session-1"]);
     expect(restarted.sessions).toHaveLength(1);
   });
 
@@ -159,7 +169,7 @@ describe("ConversationRegistry", () => {
       data: { checkpoint: null },
     });
     expect(sessions[0]?.disposeCount).toBe(1);
-    expect(historyStore.histories.size).toBe(0);
+    expect(historyStore.snapshots.size).toBe(0);
 
     const retry = await registry.start("user", "chat", [user("retry")]);
     expect(await consume(retry.deltas)).toBe("hello world");
@@ -201,7 +211,7 @@ describe("ConversationRegistry", () => {
     await expect(consume(failed.deltas)).rejects.toThrow("deterministic history failure");
     expect(sessions[0]?.sessionManager.branches).toEqual([null]);
     expect(sessions[0]?.disposeCount).toBe(1);
-    expect(historyStore.histories.size).toBe(0);
+    expect(historyStore.snapshots.size).toBe(0);
   });
 
   test("waits for rollback when aborted during visible-history save", async () => {
@@ -233,7 +243,7 @@ describe("ConversationRegistry", () => {
     const aborting = active.abort().then(() => { abortFinished = true; });
     await Promise.resolve();
     expect(abortFinished).toBe(false);
-    expect(historyStore.histories.size).toBe(0);
+    expect(historyStore.snapshots.size).toBe(0);
 
     releaseSave();
     await rollbackStarted;
@@ -244,7 +254,7 @@ describe("ConversationRegistry", () => {
     expect(await failed).toHaveProperty("name", "AbortError");
     expect(sessions[0]?.sessionManager.branches).toEqual([null]);
     expect(sessions[0]?.disposeCount).toBe(1);
-    expect(historyStore.histories.size).toBe(0);
+    expect(historyStore.snapshots.size).toBe(0);
 
     historyStore.saveGate = undefined;
     historyStore.saveStarted = undefined;
