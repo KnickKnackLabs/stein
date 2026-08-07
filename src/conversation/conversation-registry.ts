@@ -2,9 +2,11 @@ import { createHash } from "node:crypto";
 import { SessionAgent } from "../session/session-agent.ts";
 import {
   Conversation,
+  type ConversationHistorySnapshot,
   type ConversationHistoryStore,
   type ConversationMessage,
   type ConversationTurn,
+  validateConversationHistorySnapshot,
 } from "./conversation.ts";
 
 export type ConversationIdentity = Readonly<{
@@ -15,6 +17,7 @@ export type ConversationIdentity = Readonly<{
 
 export type ConversationAgentFactory = (
   identity: ConversationIdentity,
+  snapshot: ConversationHistorySnapshot,
 ) => Promise<SessionAgent>;
 
 export class ConversationRegistry {
@@ -42,19 +45,20 @@ export class ConversationRegistry {
     if (existing) return existing;
 
     let created: Promise<Conversation>;
-    created = this.#historyStore.load(identity.conversationId).then((history) =>
-      new Conversation({
+    created = this.#historyStore.load(identity.conversationId).then((snapshot) => {
+      validateConversationHistorySnapshot(snapshot);
+      return new Conversation({
         conversationId: identity.conversationId,
-        history,
+        history: snapshot.messages,
         historyStore: this.#historyStore,
-        createAgent: () => this.#createAgent(identity),
+        createAgent: () => this.#createAgent(identity, snapshot),
         evict: () => {
           if (this.#conversations.get(identity.conversationId) === created) {
             this.#conversations.delete(identity.conversationId);
           }
         },
-      })
-    );
+      });
+    });
     this.#conversations.set(identity.conversationId, created);
     created.catch(() => {
       if (this.#conversations.get(identity.conversationId) === created) {

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import {
   createAgentSession,
@@ -10,6 +11,10 @@ import { SessionAgent } from "./session-agent.ts";
 
 export type ModelDescription = Readonly<{ provider: string; id: string }>;
 
+export type PiSessionRecovery = Readonly<{
+  committedLeafId: string | null;
+}>;
+
 export type PiSessionFactoryConfig = Readonly<{
   model: ModelDescription;
   systemPrompt: string;
@@ -20,7 +25,10 @@ export type PiSessionFactoryConfig = Readonly<{
 
 export function createPiSessionFactory(config: PiSessionFactoryConfig) {
   validateConfig(config);
-  return async (conversationId: string): Promise<SessionAgent> => {
+  return async (
+    conversationId: string,
+    recovery?: PiSessionRecovery,
+  ): Promise<SessionAgent> => {
     validateConversationId(conversationId);
     const modelRuntime = await ModelRuntime.create({
       authPath: join(config.agentDirectory, "auth.json"),
@@ -48,6 +56,12 @@ export function createPiSessionFactory(config: PiSessionFactoryConfig) {
     });
     await resourceLoader.reload();
     const sessionFile = join(config.sessionDirectory, `${conversationId}.jsonl`);
+    const sessionManager = openSessionManagerForRecovery(
+      sessionFile,
+      config.sessionDirectory,
+      config.workspaceDirectory,
+      recovery,
+    );
     const { session, extensionsResult, modelFallbackMessage } = await createAgentSession({
       cwd: config.workspaceDirectory,
       agentDir: config.agentDirectory,
@@ -55,11 +69,7 @@ export function createPiSessionFactory(config: PiSessionFactoryConfig) {
       model,
       noTools: "all",
       resourceLoader,
-      sessionManager: SessionManager.open(
-        sessionFile,
-        config.sessionDirectory,
-        config.workspaceDirectory,
-      ),
+      sessionManager,
       settingsManager,
     });
     if (extensionsResult.errors.length > 0 || modelFallbackMessage) {
@@ -69,6 +79,39 @@ export function createPiSessionFactory(config: PiSessionFactoryConfig) {
     }
     return new SessionAgent({ conversationId, session });
   };
+}
+
+export function openSessionManagerForRecovery(
+  sessionFile: string,
+  sessionDirectory: string,
+  workspaceDirectory: string,
+  recovery?: PiSessionRecovery,
+): SessionManager {
+  const sessionExists = existsSync(sessionFile);
+  if (recovery !== undefined && recovery.committedLeafId !== null && !sessionExists) {
+    throw new Error("Committed visible history has no Pi session file");
+  }
+
+  const sessionManager = SessionManager.open(
+    sessionFile,
+    sessionDirectory,
+    workspaceDirectory,
+  );
+  if (recovery === undefined) return sessionManager;
+
+  if (recovery.committedLeafId === null) {
+    sessionManager.resetLeaf();
+    return sessionManager;
+  }
+  try {
+    sessionManager.branch(recovery.committedLeafId);
+  } catch (error) {
+    throw new Error(
+      `Committed Pi session leaf is unavailable: ${recovery.committedLeafId}`,
+      { cause: error },
+    );
+  }
+  return sessionManager;
 }
 
 function validateConfig(config: PiSessionFactoryConfig): void {

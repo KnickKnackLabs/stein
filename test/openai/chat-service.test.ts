@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  ConversationHistoryStore,
-  ConversationMessage,
-  VisibleConversationMessage,
+import {
+  emptyConversationHistorySnapshot,
+  type ConversationHistorySnapshot,
+  type ConversationHistoryStore,
+  type ConversationMessage,
 } from "../../src/conversation/conversation.ts";
 import type { ConversationIdentity } from "../../src/conversation/conversation-registry.ts";
 import { OpenAIChatService } from "../../src/openai/chat-service.ts";
@@ -10,17 +11,19 @@ import { SessionAgent } from "../../src/session/session-agent.ts";
 import { FakePiSession } from "../support/fake-pi-session.ts";
 
 class MemoryHistoryStore implements ConversationHistoryStore {
-  readonly histories = new Map<string, readonly VisibleConversationMessage[]>();
+  readonly snapshots = new Map<string, ConversationHistorySnapshot>();
 
-  async load(conversationId: string): Promise<readonly VisibleConversationMessage[]> {
-    return structuredClone(this.histories.get(conversationId) ?? []);
+  async load(conversationId: string): Promise<ConversationHistorySnapshot> {
+    return structuredClone(
+      this.snapshots.get(conversationId) ?? emptyConversationHistorySnapshot(),
+    );
   }
 
   async save(
     conversationId: string,
-    history: readonly VisibleConversationMessage[],
+    snapshot: ConversationHistorySnapshot,
   ): Promise<void> {
-    this.histories.set(conversationId, structuredClone(history));
+    this.snapshots.set(conversationId, structuredClone(snapshot));
   }
 }
 

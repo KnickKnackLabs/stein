@@ -12,14 +12,49 @@ export type VisibleConversationMessage = Readonly<{
   content: string;
 }>;
 
+export type ConversationHistorySnapshot = Readonly<{
+  version: 1;
+  messages: readonly VisibleConversationMessage[];
+  committedLeafId: string | null;
+}>;
+
 export interface ConversationHistoryStore {
-  load(conversationId: string): Promise<readonly VisibleConversationMessage[]>;
+  load(conversationId: string): Promise<ConversationHistorySnapshot>;
   // Success is the turn commit point; abort before replacement must reject.
   save(
     conversationId: string,
-    history: readonly VisibleConversationMessage[],
+    snapshot: ConversationHistorySnapshot,
     signal: AbortSignal,
   ): Promise<void>;
+}
+
+export function emptyConversationHistorySnapshot(): ConversationHistorySnapshot {
+  return { version: 1, messages: [], committedLeafId: null };
+}
+
+export function validateConversationHistorySnapshot(
+  value: ConversationHistorySnapshot,
+): void {
+  if (value.version !== 1 || !Array.isArray(value.messages)) {
+    throw new Error("Invalid visible conversation history snapshot");
+  }
+  if (!value.messages.every(isVisibleConversationMessage)) {
+    throw new Error("Invalid visible conversation history messages");
+  }
+  if (value.committedLeafId !== null && !value.committedLeafId.trim()) {
+    throw new Error("Invalid committed Pi session leaf");
+  }
+  if ((value.messages.length === 0) !== (value.committedLeafId === null)) {
+    throw new Error("Visible conversation history and committed Pi leaf disagree");
+  }
+  if (
+    value.messages.length % 2 !== 0 ||
+    value.messages.some((message, index) =>
+      message.role !== (index % 2 === 0 ? "user" : "assistant")
+    )
+  ) {
+    throw new Error("Visible conversation history is not a sequence of committed turns");
+  }
 }
 
 export type ConversationTurn = Readonly<{
@@ -95,15 +130,22 @@ export class Conversation {
   async commit(
     userMessage: ConversationMessage,
     assistantContent: string,
+    committedLeafId: string | null,
     signal: AbortSignal,
   ): Promise<void> {
-    const history: VisibleConversationMessage[] = [
+    const messages: VisibleConversationMessage[] = [
       ...this.#history,
       { role: "user", content: userMessage.content },
       { role: "assistant", content: assistantContent },
     ];
-    await this.#historyStore.save(this.conversationId, history, signal);
-    this.#history = history;
+    const snapshot: ConversationHistorySnapshot = {
+      version: 1,
+      messages,
+      committedLeafId,
+    };
+    validateConversationHistorySnapshot(snapshot);
+    await this.#historyStore.save(this.conversationId, snapshot, signal);
+    this.#history = messages;
     this.#active = false;
   }
 
@@ -177,9 +219,11 @@ class ActiveConversationTurn implements ConversationTurn {
 
       if (this.#phase !== "responding") return;
       this.#phase = "saving";
+      const committedLeafId = this.#agent.checkpoint();
       this.#savePromise = this.#conversation.commit(
         this.#userMessage,
         output,
+        committedLeafId,
         this.#abortController.signal,
       );
       await this.#savePromise;
@@ -207,6 +251,17 @@ class ActiveConversationTurn implements ConversationTurn {
     this.#rollbackPromise = this.#conversation.rollback(this.#agent, this.#checkpoint);
     return this.#rollbackPromise;
   }
+}
+
+function isVisibleConversationMessage(
+  value: unknown,
+): value is VisibleConversationMessage {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    (record.role === "user" || record.role === "assistant") &&
+    typeof record.content === "string"
+  );
 }
 
 function snapshotUserMessage(message: ConversationMessage): ConversationMessage {
