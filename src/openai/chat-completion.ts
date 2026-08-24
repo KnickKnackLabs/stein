@@ -34,9 +34,12 @@ export function parseChatCompletion(
     );
   }
 
-  const budget: RequestBudget = { attachmentCount: 0, textBytes: 0 };
+  const budgets: RequestBudgets = {
+    raw: { attachmentCount: 0, textBytes: 0 },
+    normalized: { attachmentCount: 0, textBytes: 0 },
+  };
   const messages = value.messages.map((message, index) =>
-    parseMessage(message, index, budget, normalizeAttachments),
+    parseMessage(message, index, budgets, normalizeAttachments),
   );
   if (messages.at(-1)?.role !== "user") {
     throw new InvalidChatCompletionError("Last message must be a user message");
@@ -49,10 +52,15 @@ type RequestBudget = {
   textBytes: number;
 };
 
+type RequestBudgets = Readonly<{
+  raw: RequestBudget;
+  normalized: RequestBudget;
+}>;
+
 function parseMessage(
   value: unknown,
   index: number,
-  budget: RequestBudget,
+  budgets: RequestBudgets,
   normalizeAttachments: AttachmentNormalizer | undefined,
 ): ConversationMessage {
   if (
@@ -65,9 +73,10 @@ function parseMessage(
     );
   }
 
-  const structured = parseAttachments(value.attachments, value.role, index);
+  addText(value.content, budgets.raw);
+  const structured = parseAttachments(value.attachments, value.role, index, budgets.raw);
   if (value.role === "assistant") {
-    addText(value.content, budget);
+    addText(value.content, budgets.normalized);
     return { role: "assistant", content: value.content, attachments: [] };
   }
 
@@ -76,8 +85,7 @@ function parseMessage(
     content: value.content,
     attachments: structured,
   }) ?? { content: value.content, attachments: structured };
-  const { content, attachments } = validateNormalizedMessage(normalized, index);
-  accountMessage(content, attachments, budget);
+  const { content, attachments } = validateNormalizedMessage(normalized, index, budgets.normalized);
   if (!content.trim() && !attachments.some((attachment) => attachment.text.trim())) {
     throw new InvalidChatCompletionError(
       `messages[${index}] user turn must contain text or non-empty attached text`,
@@ -89,15 +97,17 @@ function parseMessage(
 function validateNormalizedMessage(
   value: unknown,
   messageIndex: number,
+  budget: RequestBudget,
 ): Pick<ConversationMessage, "content" | "attachments"> {
   if (!isRecord(value) || typeof value.content !== "string" || !Array.isArray(value.attachments)) {
     throw new InvalidChatCompletionError(
       `messages[${messageIndex}] attachment normalizer must return content and attachments`,
     );
   }
+  addText(value.content, budget);
   return {
     content: value.content,
-    attachments: parseAttachments(value.attachments, "user", messageIndex),
+    attachments: parseAttachments(value.attachments, "user", messageIndex, budget),
   };
 }
 
@@ -105,6 +115,7 @@ function parseAttachments(
   value: unknown,
   role: ConversationMessage["role"],
   messageIndex: number,
+  budget: RequestBudget,
 ): ConversationMessage["attachments"] {
   if (value === undefined) return [];
   if (role !== "user" || !Array.isArray(value)) {
@@ -113,6 +124,7 @@ function parseAttachments(
     );
   }
 
+  addAttachments(value.length, budget);
   return value.map((attachment, attachmentIndex) => {
     if (
       !isRecord(attachment) ||
@@ -124,25 +136,18 @@ function parseAttachments(
         `messages[${messageIndex}].attachments[${attachmentIndex}] must contain name and text`,
       );
     }
+    addText(attachment.name, budget);
+    addText(attachment.text, budget);
     return { name: attachment.name, text: attachment.text };
   });
 }
 
-function accountMessage(
-  content: string,
-  attachments: ConversationMessage["attachments"],
-  budget: RequestBudget,
-): void {
-  budget.attachmentCount += attachments.length;
+function addAttachments(count: number, budget: RequestBudget): void {
+  budget.attachmentCount += count;
   if (budget.attachmentCount > CHAT_COMPLETION_LIMITS.attachments) {
     throw new InvalidChatCompletionError(
       `messages must contain at most ${CHAT_COMPLETION_LIMITS.attachments} attachments`,
     );
-  }
-  addText(content, budget);
-  for (const attachment of attachments) {
-    addText(attachment.name, budget);
-    addText(attachment.text, budget);
   }
 }
 

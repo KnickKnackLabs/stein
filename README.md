@@ -6,7 +6,7 @@
 
 **Persistent Pi sessions that know how to roll back.**
 
-[![tests: 104](https://img.shields.io/badge/tests-104-brightgreen?style=flat)](test/)
+[![tests: 105](https://img.shields.io/badge/tests-105-brightgreen?style=flat)](test/)
 [![lints: 6](https://img.shields.io/badge/lints-6-blue?style=flat)](mise.toml)
 [![Pi: 0.83.0](https://img.shields.io/badge/Pi-0.83.0-f472b6?style=flat)](package.json)
 

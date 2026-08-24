@@ -141,6 +141,37 @@ describe("OpenAI chat completion contract", () => {
     ).toThrow(`at most ${CHAT_COMPLETION_LIMITS.textBytes} bytes`);
   });
 
+  test("enforces raw request budgets before attachment normalization", () => {
+    const dropRawInput = () => ({ content: "normalized", attachments: [] });
+    const request = (content: string, attachments: unknown[] = []) => ({
+      model: "test/model",
+      stream: true,
+      messages: [{ role: "user", content, attachments }],
+    });
+
+    expect(() =>
+      parseChatCompletion(
+        request(
+          "text",
+          Array.from({ length: CHAT_COMPLETION_LIMITS.attachments + 1 }, (_, index) => ({
+            name: `${index}.txt`,
+            text: "text",
+          })),
+        ),
+        "test/model",
+        dropRawInput,
+      ),
+    ).toThrow(`at most ${CHAT_COMPLETION_LIMITS.attachments} attachments`);
+
+    expect(() =>
+      parseChatCompletion(
+        request("a".repeat(CHAT_COMPLETION_LIMITS.textBytes + 1)),
+        "test/model",
+        dropRawInput,
+      ),
+    ).toThrow(`at most ${CHAT_COMPLETION_LIMITS.textBytes} bytes`);
+  });
+
   test("encodes one OpenAI-compatible SSE chunk", () => {
     const chunk = chatCompletionChunk(
       "chatcmpl-test",
