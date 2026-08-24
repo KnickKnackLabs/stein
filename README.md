@@ -1,99 +1,105 @@
-# Stein
+<div align="center">
 
-Stein is a TypeScript harness for building applications around Pi sessions.
-The session agent binds one local conversation identity to an injected Pi
-session and owns turn sequencing, cancellation, and disposal. A focused turn
-module validates and serializes text plus attached content without exposing the
-conversation identifier to the model. A focused text-stream module bridges Pi
-events into ordered assistant deltas.
+<img src="assets/stein.webp" alt="A wooden outhouse standing alone in the desert" width="800" />
 
-The persistent Pi runtime resolves one explicitly configured model, disables
-tools and ambient resources, stores its JSONL under a private session directory,
-and never substitutes a fallback model silently. The conversation layer adds
-private identity, visible-history continuity, one active turn, and rollback when
-a turn does not reach its visible-history commit.
+# stein
 
-The OpenAI-compatible adapter accepts authenticated streaming chat requests,
-maps Open WebUI user and chat headers to one conversation, and rolls a turn back
-when the request or response stream is cancelled. Deployment, product prompts,
-and product behavior remain separate review boundaries.
+**Persistent Pi sessions that know how to roll back.**
 
-## Run one session
+[![tests: 104](https://img.shields.io/badge/tests-104-brightgreen?style=flat)](test/)
+[![lints: 6](https://img.shields.io/badge/lints-6-blue?style=flat)](mise.toml)
+[![Pi: 0.83.0](https://img.shields.io/badge/Pi-0.83.0-f472b6?style=flat)](package.json)
 
-Install dependencies, prepare private system and user prompt files, then run one
-persistent turn:
+</div>
 
-```sh
+Stein is a private TypeScript reference harness for product services built around persistent [Pi](https://github.com/badlogic/pi-mono) sessions. It keeps the generic runtime, transaction, persistence, and OpenAI-compatible boundaries in one reviewed place; product repositories add their own prompts, tools, workflows, deployment, and data policy.
+
+## Run one turn
+
+```bash
 mise run install
 mise run session:run -- \
   --pi-model provider/model \
   --system-prompt-file /absolute/private/system.md \
   --prompt-file /absolute/private/prompt.md \
-  --workspace /absolute/workspace \
+  --workspace /absolute/private/workspaces \
   --session-dir /absolute/private/sessions \
   --agent-dir /absolute/pi-agent \
   --conversation-id local-smoke
 ```
 
-The task streams assistant text to standard output and keeps the Pi session at
-`<session-dir>/<conversation-id>.jsonl`. Reusing the same inputs resumes that
-session. The task does not discover tools, extensions, skills, prompt templates,
-themes, or ambient context.
+Reusing the conversation identifier resumes its Pi JSONL. Stein creates a private workspace beneath the supplied root and streams only the successful assistant attempt to standard output.
 
-## Conversation transactions
+## Serve chat
 
-`ConversationRegistry` resolves user and chat identity to one `Conversation`.
-The conversation checks the caller's visible history, reserves one turn, streams
-through its `SessionAgent`, and commits by saving the next visible history with
-the post-response Pi leaf. Model failure, active abort or cancellation, and
-history-save failure restore the prior Pi branch before the registry permits a
-new session for that identity.
-
-`FileConversationHistoryStore` atomically replaces mode-0600 versioned snapshots
-in a mode-0700 directory. Each snapshot stores visible user and assistant
-role/content pairs plus the committed Pi leaf. After a process restart, Stein
-restores that leaf before Pi builds model context, excluding entries abandoned
-before snapshot replacement. This is process-crash recovery, not a power-loss
-durability or multi-process safety guarantee.
-
-## Serve OpenAI-compatible chat
-
-Prepare private service-token and system-prompt files, then start the local
-service with explicit runtime inputs:
-
-```sh
+```bash
 mise run serve -- \
   --listen 127.0.0.1:8787 \
-  --service-token-file /absolute/private/token \
+  --service-token-file /absolute/private/service-tokens \
   --pi-model provider/model \
   --system-prompt-file /absolute/private/system.md \
-  --workspace /absolute/workspace \
+  --workspace /absolute/private/workspaces \
   --session-dir /absolute/private/sessions \
   --agent-dir /absolute/pi-agent
 ```
 
-`GET /health` is public. `GET /v1/models` and streaming
-`POST /v1/chat/completions` require the configured bearer token. Chat requests
-also require `x-openwebui-user-id` and `x-openwebui-chat-id`; Stein hashes those
-values into a private local conversation identity and does not pass them to the
-model.
+The token file accepts one bearer token per nonempty line for overlap during rotation. `GET /health` is public; `GET /v1/models` and streaming `POST /v1/chat/completions` require authentication. Request abort and response cancellation both roll the active turn back.
 
-## Local checks
+## The transaction
 
-Install the declared tools and run the stable local check surface:
+- Resolve user and chat identity into one private local conversation identifier.
+- Require the caller's visible role/content history to match the committed path.
+- Run one Pi turn, discarding output from failed automatic retry attempts.
+- Atomically save visible history with the new Pi leaf, or restore the prior leaf before reuse.
 
-```sh
+Typed turn participants can attach product state to the same rollback boundary by returning restore closures. The file history store keeps mode-0600 versioned snapshots under a mode-0700 directory and restores the committed Pi leaf after a process restart.
+
+## Build a product harness
+
+`createPiSessionFactory` starts from a deliberately quiet baseline: one exact model, no fallback, no tools, no model-catalog network access, and no ambient extensions, skills, templates, themes, or context files. Products opt into only what they need:
+
+- Read-only Pi credentials with an immutable API key store and in-memory model catalog.
+- Explicit built-in and custom tool composition while preserving no-tools as the default.
+- Per-conversation mode-0700 workspaces and typed rollback participants.
+- Scoped `read`, `grep`, `find`, `ls`, `write`, and `edit` tools over product-owned virtual roots.
+- Content-free activity events containing sanitized tool, virtual target, status, and duration.
+
+## Open WebUI adapters
+
+The generic chat service requires injected identity resolution and optionally accepts attachment normalization. Its core knows no Open WebUI header or markup names.
+
+- The default serve task uses explicit legacy user/chat headers for a trusted private proxy boundary.
+- The optional signed adapter verifies an HS256 Open WebUI JWT, issuer, subject, lifetime, and separate chat ID while ignoring spoofable legacy identity headers.
+- The optional KKL adapter converts the fork's embedded attached-file markup into Stein's structured text attachments without changing generic OpenAI semantics.
+
+<details>
+<summary><b>Runtime and security boundaries</b></summary>
+
+- Conversation workspaces use mode `0700`; visible-history snapshots use mode `0600`.
+- Prompt and token inputs must be regular final paths with no group/world permission bits; parent-directory safety remains an operator responsibility.
+- Chat accepts at most 200 messages, 20 text attachments, and 2 MiB aggregate UTF-8 text.
+- Scoped filesystem checks are in-process userspace protection, not an operating-system sandbox, and cannot eliminate concurrent filesystem races.
+- Visible-history snapshots omit attachments and model internals; Pi JSONL remains the model-context record.
+- Snapshot replacement provides process-crash recovery, not power-loss durability or multi-process transactions.
+- Deployment, user provisioning, retention, backup, and product data policy remain separate review boundaries.
+
+</details>
+
+## Develop
+
+```bash
 mise trust
 mise install
+mise run install
 mise run check
 ```
 
-`mise run check` runs strict TypeScript checking, deterministic Bun tests,
-[KnickKnackLabs/codebase](https://github.com/KnickKnackLabs/codebase) convention
-lints, and a whitespace check. CI invokes this same public command.
+The public check runs README drift detection, Biome, strict TypeScript, the Bun suite, KnickKnackLabs/codebase lints, and whitespace checks. CI runs the same command. Format intentionally changed files with `bun run format`.
 
-An optional local pre-commit hook can run the same configured lints:
+<div align="center">
 
-```sh
-codebase pre-commit
-```
+---
+
+<sub>
+Generated with <a href="https://github.com/KnickKnackLabs/readme">readme</a>
+</sub></div>
