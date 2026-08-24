@@ -8,6 +8,23 @@ import { OpenAIChatService } from "../openai/chat-service.ts";
 import { createPiSessionFactory } from "../session/pi-session.ts";
 import type { ServerConfig } from "./server-config.ts";
 
+type ChatService = Pick<OpenAIChatService, "fetch">;
+type ServerRequestControl = Readonly<{
+  timeout(request: Request, seconds: number): void;
+}>;
+
+export function handleServerRequest(
+  service: ChatService,
+  request: Request,
+  server: ServerRequestControl,
+): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  if (request.method === "POST" && path === "/v1/chat/completions") {
+    server.timeout(request, 0);
+  }
+  return service.fetch(request);
+}
+
 export async function runServer(config: ServerConfig): Promise<never> {
   await mkdir(config.sessionDirectory, { recursive: true, mode: 0o700 });
   await chmod(config.sessionDirectory, 0o700);
@@ -36,7 +53,8 @@ export async function runServer(config: ServerConfig): Promise<never> {
   const server = Bun.serve({
     hostname: config.hostname,
     port: config.port,
-    fetch: (request) => service.fetch(request),
+    fetch: (request, requestServer) =>
+      handleServerRequest(service, request, requestServer),
   });
   process.stdout.write(`Stein session service listening on ${server.url.origin}\n`);
   return new Promise<never>(() => undefined);
