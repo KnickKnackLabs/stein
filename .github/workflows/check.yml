@@ -12,6 +12,7 @@ permissions:
 env:
   GH_TOKEN: ${{ github.token }}
   GITHUB_TOKEN: ${{ github.token }}
+  MISE_JOBS: 1
 
 jobs:
   check:
