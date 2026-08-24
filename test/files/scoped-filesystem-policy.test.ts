@@ -103,6 +103,14 @@ describe("scoped filesystem policy", () => {
     for (const path of ["conversation/protected/file.md", "conversation/state.lock"]) {
       await expect(scoped.resolveWrite(path, "write")).rejects.toThrow("read-only");
     }
+
+    const protectedDirectory = join(fixture.conversation, "protected");
+    await mkdir(protectedDirectory);
+    await writeFile(join(protectedDirectory, "existing.md"), "protected\n");
+    await symlink(protectedDirectory, join(fixture.conversation, "alias"));
+    for (const path of ["conversation/alias/new.md", "conversation/alias/existing.md"]) {
+      await expect(scoped.resolveWrite(path, "write")).rejects.toThrow("read-only");
+    }
   });
 
   test("rejects traversal and symlink escapes without exposing host paths", async () => {

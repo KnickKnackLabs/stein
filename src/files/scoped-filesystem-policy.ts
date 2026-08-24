@@ -43,10 +43,16 @@ type NormalizedRoot = Readonly<{
   virtualResolvedPath?: string;
 }>;
 
-type ResolvedPath = Readonly<{
+type TranslatedPath = Readonly<{
   hostPath: string;
   root: NormalizedRoot;
 }>;
+
+type ResolvedPath = TranslatedPath &
+  Readonly<{
+    canonicalHostPath: string;
+    canonicalRootPath: string;
+  }>;
 
 type WriteDenyGlob = Readonly<{
   pattern: string;
@@ -179,7 +185,7 @@ async function assertScopedPath(
 function translateScopedPath(
   path: string,
   roots: readonly NormalizedRoot[],
-): ResolvedPath | undefined {
+): TranslatedPath | undefined {
   const resolvedPath = resolve(path);
   for (const root of roots) {
     if (root.virtualResolvedPath) {
@@ -208,17 +214,29 @@ async function validateHostPath(
     if (!isWithinRoot(existingPath, realRoot ?? root.path)) {
       throw outsideRootsError(action, requestedPath, roots);
     }
-    return { hostPath, root };
+    return {
+      hostPath,
+      canonicalHostPath: existingPath,
+      canonicalRootPath: realRoot ?? root.path,
+      root,
+    };
   }
 
+  let canonicalHostPath = hostPath;
   const existingParent = await nearestExistingAncestor(dirname(hostPath));
   if (existingParent) {
     const realParent = await realpath(existingParent);
     if (!isWithinRoot(realParent, realRoot ?? root.path)) {
       throw outsideRootsError(action, requestedPath, roots);
     }
+    canonicalHostPath = resolve(realParent, relative(existingParent, hostPath));
   }
-  return { hostPath, root };
+  return {
+    hostPath,
+    canonicalHostPath,
+    canonicalRootPath: realRoot ?? root.path,
+    root,
+  };
 }
 
 async function assertWritableScopedPath(
@@ -228,8 +246,17 @@ async function assertWritableScopedPath(
   denyGlobs: readonly WriteDenyGlob[],
 ): Promise<ResolvedPath> {
   const scopedPath = await assertScopedPath(path, roots, action);
-  const pathFromRoot = relative(scopedPath.root.path, scopedPath.hostPath).replaceAll("\\", "/");
-  const deniedBy = denyGlobs.find((glob) => glob.matches(pathFromRoot));
+  const requestedPathFromRoot = relative(scopedPath.root.path, scopedPath.hostPath).replaceAll(
+    "\\",
+    "/",
+  );
+  const canonicalPathFromRoot = relative(
+    scopedPath.canonicalRootPath,
+    scopedPath.canonicalHostPath,
+  ).replaceAll("\\", "/");
+  const deniedBy = denyGlobs.find(
+    (glob) => glob.matches(requestedPathFromRoot) || glob.matches(canonicalPathFromRoot),
+  );
   if (deniedBy) {
     throw protectedPathError(action, path, deniedBy.pattern, roots);
   }
