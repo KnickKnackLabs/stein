@@ -83,6 +83,15 @@ test("scopes private notes and conversation files without exposing host paths", 
       ),
     ).toContain("revised draft");
 
+    const searched = textContent(
+      await execute(tools, "grep", {
+        pattern: "domain-neutral",
+        path: "notes",
+      }),
+    );
+    expect(searched).toContain("guidance.md:1: domain-neutral guidance");
+    expect(searched).not.toContain(root);
+
     const found = textContent(
       await execute(tools, "find", {
         pattern: "*.md",

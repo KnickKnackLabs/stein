@@ -8,6 +8,7 @@ shiv = "https://github.com/KnickKnackLabs/vfox-shiv"
 
 [tools]
 bun = "1.3.12"
+ripgrep = "15.1.0"
 "shiv:codebase" = "0.4"
 "shiv:readme" = "0.3"
 
