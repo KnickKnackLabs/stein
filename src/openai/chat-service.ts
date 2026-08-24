@@ -14,21 +14,26 @@ import {
 import { streamChatCompletion } from "./chat-stream.ts";
 
 export type OpenAIChatServiceOptions = Readonly<{
-  bearerToken: string;
+  authorizedTokens: readonly string[];
   modelId: string;
   createAgent: ConversationAgentFactory;
   historyStore: ConversationHistoryStore;
 }>;
 
 export class OpenAIChatService {
-  readonly #bearerToken: string;
+  readonly #authorizedTokens: readonly string[];
   readonly #modelId: string;
   readonly #registry: ConversationRegistry;
 
   constructor(options: OpenAIChatServiceOptions) {
-    if (!options.bearerToken.trim()) throw new Error("bearerToken must not be empty");
+    if (options.authorizedTokens.length === 0) {
+      throw new Error("authorizedTokens must not be empty");
+    }
+    if (options.authorizedTokens.some((token) => !token.trim())) {
+      throw new Error("authorizedTokens must not contain an empty value");
+    }
     if (!options.modelId.trim()) throw new Error("modelId must not be empty");
-    this.#bearerToken = options.bearerToken;
+    this.#authorizedTokens = [...options.authorizedTokens];
     this.#modelId = options.modelId;
     this.#registry = new ConversationRegistry(options.createAgent, options.historyStore);
   }
@@ -38,7 +43,7 @@ export class OpenAIChatService {
     if (request.method === "GET" && path === "/health") {
       return jsonResponse({ status: "ok" });
     }
-    if (!authorized(request, this.#bearerToken)) {
+    if (!authorized(request, this.#authorizedTokens)) {
       return errorResponse("Unauthorized", "authentication_error", 401);
     }
     if (request.method === "GET" && path === "/v1/models") {
@@ -82,12 +87,17 @@ export class OpenAIChatService {
   }
 }
 
-function authorized(request: Request, expected: string): boolean {
+function authorized(request: Request, expected: readonly string[]): boolean {
   const value = request.headers.get("authorization");
   if (!value?.startsWith("Bearer ")) return false;
   const received = Buffer.from(value.slice("Bearer ".length));
-  const wanted = Buffer.from(expected);
-  return received.length === wanted.length && timingSafeEqual(received, wanted);
+  for (const candidate of expected) {
+    const wanted = Buffer.from(candidate);
+    if (received.length === wanted.length && timingSafeEqual(received, wanted)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function invalidResponse(message: string): Response {

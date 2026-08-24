@@ -1,5 +1,9 @@
-import { chmod, mkdir, readFile } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { FileConversationHistoryStore } from "../conversation/file-history-store.ts";
+import {
+  readPrivateTextFile,
+  readPrivateTextLines,
+} from "../files/private-text-file.ts";
 import { OpenAIChatService } from "../openai/chat-service.ts";
 import { createPiSessionFactory } from "../session/pi-session.ts";
 import type { ServerConfig } from "./server-config.ts";
@@ -7,11 +11,11 @@ import type { ServerConfig } from "./server-config.ts";
 export async function runServer(config: ServerConfig): Promise<never> {
   await mkdir(config.sessionDirectory, { recursive: true, mode: 0o700 });
   await chmod(config.sessionDirectory, 0o700);
-  const [bearerToken, systemPrompt] = await Promise.all([
-    readFile(config.serviceTokenFile, "utf8"),
-    readFile(config.systemPromptFile, "utf8"),
+  const [authorizedTokens, systemPrompt] = await Promise.all([
+    readPrivateTextLines(config.serviceTokenFile, "Service token file"),
+    readPrivateTextFile(config.systemPromptFile, "System prompt file"),
   ]);
-  if (!bearerToken.trim()) throw new Error("Service token file is empty");
+  if (authorizedTokens.length === 0) throw new Error("Service token file is empty");
   if (!systemPrompt.trim()) throw new Error("System prompt file is empty");
 
   const modelId = `${config.model.provider}/${config.model.id}`;
@@ -23,7 +27,7 @@ export async function runServer(config: ServerConfig): Promise<never> {
     agentDirectory: config.agentDirectory,
   });
   const service = new OpenAIChatService({
-    bearerToken: bearerToken.trim(),
+    authorizedTokens,
     modelId,
     historyStore: new FileConversationHistoryStore(config.sessionDirectory),
     createAgent: ({ conversationId }, snapshot) =>

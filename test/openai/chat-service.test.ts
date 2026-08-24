@@ -27,13 +27,16 @@ class MemoryHistoryStore implements ConversationHistoryStore {
   }
 }
 
-function harness(configure?: (session: FakePiSession, index: number) => void) {
+function harness(
+  configure?: (session: FakePiSession, index: number) => void,
+  authorizedTokens: readonly string[] = ["test-token"],
+) {
   const identities: ConversationIdentity[] = [];
   const sessions: FakePiSession[] = [];
   const historyStore = new MemoryHistoryStore();
   const service = new OpenAIChatService({
     historyStore,
-    bearerToken: "test-token",
+    authorizedTokens,
     modelId: "test/deterministic",
     async createAgent(identity) {
       identities.push(identity);
@@ -92,6 +95,26 @@ function dataEvents(body: string): Array<Record<string, unknown>> {
 }
 
 describe("OpenAIChatService", () => {
+  test("accepts any value from a multi-token authorized set", async () => {
+    const { service } = harness(undefined, ["test-token", "second-token"]);
+    const accepted = await service.fetch(new Request("http://localhost/v1/models", {
+      headers: { authorization: "Bearer second-token" },
+    }));
+    expect(accepted.status).toBe(200);
+
+    const rejected = await service.fetch(new Request("http://localhost/v1/models", {
+      headers: { authorization: "Bearer unknown-token" },
+    }));
+    expect(rejected.status).toBe(401);
+  });
+
+  test("rejects an empty authorized-token set or value", () => {
+    expect(() => harness(undefined, [])).toThrow("authorizedTokens must not be empty");
+    expect(() => harness(undefined, ["test-token", " "])).toThrow(
+      "authorizedTokens must not contain an empty value",
+    );
+  });
+
   test("exposes health and protects every model endpoint", async () => {
     const { service } = harness();
     expect((await service.fetch(request("/health"))).status).toBe(200);
