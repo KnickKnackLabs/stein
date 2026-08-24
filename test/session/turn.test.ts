@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type SessionTurn, serializeSessionTurn } from "../../src/session/session-turn.ts";
+import { type SessionTurn, serializeSessionTurn } from "../../src/session/turn.ts";
 
 const conversationId = "fictional-conversation";
 function turn(overrides: Partial<SessionTurn> = {}): SessionTurn {

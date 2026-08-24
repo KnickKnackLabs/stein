@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { type PiSession, SessionAgent } from "../../src/session/session-agent.ts";
+import { type PiSession, SessionAgent } from "../../src/session/agent.ts";
 
 const roots: string[] = [];
 

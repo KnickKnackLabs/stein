@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { sessionRunnerConfigFromMiseEnvironment } from "../../src/session/session-runner.ts";
+import { sessionRunnerConfigFromMiseEnvironment } from "../../src/session/runner.ts";
 
 const environment = {
   usage_pi_model: "test/deterministic",

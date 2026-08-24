@@ -1,5 +1,5 @@
-import type { SessionAgent, SessionCheckpoint } from "../session/session-agent.ts";
-import type { SessionAttachment } from "../session/session-turn.ts";
+import type { SessionAgent, SessionCheckpoint } from "../session/agent.ts";
+import type { SessionAttachment } from "../session/turn.ts";
 
 export type ConversationMessage = Readonly<{
   role: "user" | "assistant";

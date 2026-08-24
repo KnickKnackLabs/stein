@@ -10,7 +10,7 @@ import type { AttachmentNormalizer } from "../../src/openai/attachment-normalize
 import { OpenAIChatService } from "../../src/openai/chat-service.ts";
 import type { RequestIdentityResolver } from "../../src/openai/request-identity.ts";
 import { openWebUiHeaderIdentityResolver } from "../../src/openwebui/request-identity.ts";
-import { SessionAgent } from "../../src/session/session-agent.ts";
+import { SessionAgent } from "../../src/session/agent.ts";
 import { FakePiSession } from "../support/fake-pi-session.ts";
 
 class MemoryHistoryStore implements ConversationHistoryStore {

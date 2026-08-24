@@ -8,9 +8,9 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { type SessionActivityOptions, subscribeToSessionActivity } from "./activity-events.ts";
+import { SessionAgent } from "./agent.ts";
 import { prepareConversationWorkspace } from "./conversation-workspace.ts";
 import { createReadOnlyPiModelRuntime } from "./read-only-pi-credentials.ts";
-import { SessionAgent } from "./session-agent.ts";
 import type { PiToolDefinition } from "./tool-definition.ts";
 
 export type ModelDescription = Readonly<{ provider: string; id: string }>;

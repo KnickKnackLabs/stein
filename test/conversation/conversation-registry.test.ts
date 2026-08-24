@@ -10,7 +10,7 @@ import {
   type ConversationIdentity,
   ConversationRegistry,
 } from "../../src/conversation/conversation-registry.ts";
-import { SessionAgent } from "../../src/session/session-agent.ts";
+import { SessionAgent } from "../../src/session/agent.ts";
 import { FakePiSession } from "../support/fake-pi-session.ts";
 
 class MemoryHistoryStore implements ConversationHistoryStore {

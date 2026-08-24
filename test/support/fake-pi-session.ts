@@ -1,4 +1,4 @@
-import type { PiSession, PiSessionBranchManager } from "../../src/session/session-agent.ts";
+import type { PiSession, PiSessionBranchManager } from "../../src/session/agent.ts";
 
 export class FakeSessionManager implements PiSessionBranchManager {
   leafId: string | null = null;

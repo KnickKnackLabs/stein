@@ -3,7 +3,7 @@ import {
   SessionTerminalError,
   type SessionTextSource,
   streamSessionText,
-} from "../../src/session/session-text-stream.ts";
+} from "../../src/session/text-stream.ts";
 
 class FakeSource implements SessionTextSource {
   readonly #listeners = new Set<(event: unknown) => void>();

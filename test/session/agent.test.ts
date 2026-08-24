@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { SessionAgent, type SessionTurnParticipant } from "../../src/session/session-agent.ts";
-import type { SessionTurn } from "../../src/session/session-turn.ts";
+import { SessionAgent, type SessionTurnParticipant } from "../../src/session/agent.ts";
+import type { SessionTurn } from "../../src/session/turn.ts";
 import { FakePiSession } from "../support/fake-pi-session.ts";
 
 const conversationId = "fictional-conversation";
