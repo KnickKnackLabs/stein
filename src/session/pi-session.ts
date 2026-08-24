@@ -6,6 +6,7 @@ import {
   ModelRuntime,
   SessionManager,
   SettingsManager,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createReadOnlyPiModelRuntime } from "./read-only-pi-credentials.ts";
 import { SessionAgent } from "./session-agent.ts";
@@ -24,10 +25,19 @@ export type PiSessionFactoryConfig = Readonly<{
   sessionDirectory: string;
   agentDirectory: string;
   piStorageMode?: PiStorageMode;
+  /** Exact active tool names, including any custom tools that should be enabled. */
+  tools?: readonly string[];
+  /** Custom tool definitions to register for this session factory. */
+  customTools?: readonly ToolDefinition<any, any, any>[];
 }>;
 
 export function createPiSessionFactory(config: PiSessionFactoryConfig) {
   validateConfig(config);
+  const tools = config.tools === undefined ? undefined : [...config.tools];
+  const customTools = config.customTools === undefined
+    ? undefined
+    : [...config.customTools];
+  const useNoToolsDefault = tools === undefined && customTools === undefined;
   return async (
     conversationId: string,
     recovery?: PiSessionRecovery,
@@ -75,7 +85,12 @@ export function createPiSessionFactory(config: PiSessionFactoryConfig) {
       agentDir: config.agentDirectory,
       modelRuntime,
       model,
-      noTools: "all",
+      ...(useNoToolsDefault
+        ? { noTools: "all" as const }
+        : {
+          tools: [...(tools ?? [])],
+          ...(customTools === undefined ? {} : { customTools: [...customTools] }),
+        }),
       resourceLoader,
       sessionManager,
       settingsManager,
@@ -136,6 +151,10 @@ function validateConfig(config: PiSessionFactoryConfig): void {
   ) {
     throw new Error("piStorageMode must be default or read-only");
   }
+  config.tools?.forEach((name, index) => requireText(`tools[${index}]`, name));
+  config.customTools?.forEach((tool, index) =>
+    requireText(`customTools[${index}].name`, tool.name)
+  );
 }
 
 function validateConversationId(value: string): void {
