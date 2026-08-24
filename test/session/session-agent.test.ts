@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { SessionAgent } from "../../src/session/session-agent.ts";
+import {
+  SessionAgent,
+  type SessionTurnParticipant,
+} from "../../src/session/session-agent.ts";
 import type { SessionTurn } from "../../src/session/session-turn.ts";
 import { FakePiSession } from "../support/fake-pi-session.ts";
 
@@ -11,6 +14,27 @@ async function collect(chunks: AsyncIterable<string>): Promise<string[]> {
   const output: string[] = [];
   for await (const chunk of chunks) output.push(chunk);
   return output;
+}
+
+class CounterTurnParticipant implements SessionTurnParticipant {
+  value = 0;
+  beginCount = 0;
+  restoreCount = 0;
+
+  beginTurn(): void {
+    this.beginCount += 1;
+    this.value = 0;
+  }
+
+  checkpoint() {
+    const value = this.value;
+    return {
+      restore: () => {
+        this.value = value;
+        this.restoreCount += 1;
+      },
+    };
+  }
 }
 
 describe("SessionAgent", () => {
@@ -47,11 +71,18 @@ describe("SessionAgent", () => {
     expect(await collect(agent.respond(turn("Afterward.")))).toEqual(["afterward"]);
   });
 
-  test("checkpoints and rolls persistent session state back", async () => {
+  test("checkpoints and rolls persistent session and participant state back", async () => {
+    const participant = new CounterTurnParticipant();
+    participant.value = 1;
     const session = new FakePiSession();
     session.sessionManager.leafId = "committed-leaf";
-    const agent = new SessionAgent({ conversationId, session });
+    const agent = new SessionAgent({
+      conversationId,
+      session,
+      turnParticipant: participant,
+    });
     const checkpoint = agent.checkpoint();
+    participant.value = 2;
     session.sessionManager.leafId = "abandoned-leaf";
 
     await agent.rollback(checkpoint);
@@ -62,6 +93,31 @@ describe("SessionAgent", () => {
       type: "stein.turn_rollback",
       data: { checkpoint: "committed-leaf" },
     }]);
+    expect(participant.value).toBe(1);
+    expect(participant.restoreCount).toBe(1);
+  });
+
+  test("restores fresh participant state after a failed turn", async () => {
+    const participant = new CounterTurnParticipant();
+    participant.value = 7;
+    const session = new FakePiSession();
+    session.onPrompt = () => {
+      participant.value = 2;
+    };
+    session.shouldFail = true;
+    session.failure = new Error("fictional prompt failure");
+    const agent = new SessionAgent({
+      conversationId,
+      session,
+      turnParticipant: participant,
+    });
+
+    await expect(collect(agent.respond(turn()))).rejects.toThrow(
+      "fictional prompt failure",
+    );
+    expect(participant.beginCount).toBe(1);
+    expect(participant.value).toBe(0);
+    expect(participant.restoreCount).toBe(1);
   });
 
   test("delegates abort and disposes once", async () => {

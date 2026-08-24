@@ -60,7 +60,7 @@ describe("persistent session rollback", () => {
     const backend = new SessionBackend(manager);
     const agent = new SessionAgent({ conversationId: "fictional-conversation", session: backend });
     const checkpoint = agent.checkpoint();
-    if (checkpoint === null) throw new Error("Expected a committed checkpoint");
+    if (checkpoint.leafId === null) throw new Error("Expected a committed checkpoint");
     const abandonedId = appendTurn(manager, "abandoned");
 
     await agent.rollback(checkpoint);
@@ -73,7 +73,7 @@ describe("persistent session rollback", () => {
 
     expect(backend.abortCount).toBe(1);
     expect(reopened.getLeafId()).toBe(rollbackId);
-    expect(activeIds).toContain(checkpoint);
+    expect(activeIds).toContain(checkpoint.leafId);
     expect(activeIds).toContain(rollbackId);
     expect(activeIds).not.toContain(abandonedId);
     expect(context).toContain("committed assistant");

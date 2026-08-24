@@ -219,11 +219,11 @@ class ActiveConversationTurn implements ConversationTurn {
 
       if (this.#phase !== "responding") return;
       this.#phase = "saving";
-      const committedLeafId = this.#agent.checkpoint();
+      const committedCheckpoint = this.#agent.checkpoint();
       this.#savePromise = this.#conversation.commit(
         this.#userMessage,
         output,
-        committedLeafId,
+        committedCheckpoint.leafId,
         this.#abortController.signal,
       );
       await this.#savePromise;
