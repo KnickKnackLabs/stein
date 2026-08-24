@@ -3,6 +3,4 @@ export type RequestIdentity = Readonly<{
   chatId: string;
 }>;
 
-export type RequestIdentityResolver = (
-  request: Request,
-) => RequestIdentity | undefined;
+export type RequestIdentityResolver = (request: Request) => RequestIdentity | undefined;

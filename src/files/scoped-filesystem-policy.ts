@@ -1,9 +1,5 @@
 import { constants } from "node:fs";
-import {
-  access,
-  lstat,
-  realpath,
-} from "node:fs/promises";
+import { access, lstat, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 export type ScopedRoot = Readonly<{
@@ -76,54 +72,39 @@ export function createScopedFilesystemAccess(
     readDescription: formatRoots(readRoots),
     writeDescription: formatRoots(writeRoots),
     async resolveRead(path, action) {
-      return (await assertScopedPath(
-        resolveRequestedPath(path),
-        readRoots,
-        action,
-      )).hostPath;
+      return (await assertScopedPath(resolveRequestedPath(path), readRoots, action)).hostPath;
     },
     async resolveWrite(path, action) {
-      return (await assertWritableScopedPath(
-        resolveRequestedPath(path),
-        writeRoots,
-        action,
-        writeDenyGlobs,
-      )).hostPath;
+      return (
+        await assertWritableScopedPath(
+          resolveRequestedPath(path),
+          writeRoots,
+          action,
+          writeDenyGlobs,
+        )
+      ).hostPath;
     },
     async resolveSearch(path, action) {
-      const resolved = await assertScopedPath(
-        resolveRequestedPath(path),
-        readRoots,
-        action,
-      );
+      const resolved = await assertScopedPath(resolveRequestedPath(path), readRoots, action);
       return {
         hostPath: resolved.hostPath,
         rootPath: resolved.root.path,
-        ...(resolved.root.virtualPath
-          ? { virtualPath: resolved.root.virtualPath }
-          : {}),
+        ...(resolved.root.virtualPath ? { virtualPath: resolved.root.virtualPath } : {}),
       };
     },
     async formatSearchResult(hostPath, searchRoot, requestedSearchPath, action) {
-      const root = readRoots.find((candidate) =>
-        candidate.path === searchRoot.rootPath &&
-        candidate.virtualPath === searchRoot.virtualPath
+      const root = readRoots.find(
+        (candidate) =>
+          candidate.path === searchRoot.rootPath &&
+          candidate.virtualPath === searchRoot.virtualPath,
       );
       if (!root || !isWithinRoot(hostPath, root.path)) {
         throw outsideRootsError(action, "<find-result>", readRoots);
       }
-      const validated = await validateHostPath(
-        hostPath,
-        root,
-        action,
-        "<find-result>",
-        readRoots,
-      );
+      const validated = await validateHostPath(hostPath, root, action, "<find-result>", readRoots);
       if (!root.virtualPath) return validated.hostPath;
       const suffix = relative(root.path, validated.hostPath).replaceAll("\\", "/");
-      const virtualResult = suffix
-        ? `${root.virtualPath}/${suffix}`
-        : root.virtualPath;
+      const virtualResult = suffix ? `${root.virtualPath}/${suffix}` : root.virtualPath;
       // Pi's find tool relativizes results against its search path. Nesting the
       // virtual result beneath that path preserves the reusable virtual name.
       return join(requestedSearchPath, virtualResult);
@@ -150,9 +131,7 @@ function normalizeRoots(
     return {
       label: root.label,
       path: resolve(root.path),
-      ...(virtualPath
-        ? { virtualPath, virtualResolvedPath: resolve(cwd, virtualPath) }
-        : {}),
+      ...(virtualPath ? { virtualPath, virtualResolvedPath: resolve(cwd, virtualPath) } : {}),
     };
   });
   const virtualPaths = normalized
@@ -164,16 +143,11 @@ function normalizeRoots(
   return normalized;
 }
 
-function normalizeVirtualPath(
-  virtualPath: string | undefined,
-  field: string,
-): string | undefined {
+function normalizeVirtualPath(virtualPath: string | undefined, field: string): string | undefined {
   if (virtualPath === undefined) return undefined;
   const normalized = virtualPath.replaceAll("\\", "/").replace(/\/$/, "");
   if (!/^[a-z][a-z0-9-]*$/.test(normalized)) {
-    throw new Error(
-      `${field} virtualPath must be one lowercase top-level path segment`,
-    );
+    throw new Error(`${field} virtualPath must be one lowercase top-level path segment`);
   }
   return normalized;
 }
@@ -199,13 +173,7 @@ async function assertScopedPath(
 ): Promise<ResolvedPath> {
   const translated = translateScopedPath(path, roots);
   if (!translated) throw outsideRootsError(action, path, roots);
-  return validateHostPath(
-    translated.hostPath,
-    translated.root,
-    action,
-    path,
-    roots,
-  );
+  return validateHostPath(translated.hostPath, translated.root, action, path, roots);
 }
 
 function translateScopedPath(
@@ -260,10 +228,7 @@ async function assertWritableScopedPath(
   denyGlobs: readonly WriteDenyGlob[],
 ): Promise<ResolvedPath> {
   const scopedPath = await assertScopedPath(path, roots, action);
-  const pathFromRoot = relative(
-    scopedPath.root.path,
-    scopedPath.hostPath,
-  ).replaceAll("\\", "/");
+  const pathFromRoot = relative(scopedPath.root.path, scopedPath.hostPath).replaceAll("\\", "/");
   const deniedBy = denyGlobs.find((glob) => glob.matches(pathFromRoot));
   if (deniedBy) {
     throw protectedPathError(action, path, deniedBy.pattern, roots);
@@ -323,15 +288,10 @@ function isWithinRoot(path: string, root: string): boolean {
   const child = resolve(path);
   const parent = resolve(root);
   const pathFromRoot = relative(parent, child);
-  return pathFromRoot === "" ||
-    (!pathFromRoot.startsWith("..") && !isAbsolute(pathFromRoot));
+  return pathFromRoot === "" || (!pathFromRoot.startsWith("..") && !isAbsolute(pathFromRoot));
 }
 
-function outsideRootsError(
-  action: string,
-  path: string,
-  roots: readonly NormalizedRoot[],
-): Error {
+function outsideRootsError(action: string, path: string, roots: readonly NormalizedRoot[]): Error {
   return new Error(
     `Access denied: cannot ${action} ${JSON.stringify(displayRequestedPath(path, roots))} outside allowed roots (${formatRoots(roots)}).`,
   );
@@ -348,34 +308,23 @@ function protectedPathError(
   );
 }
 
-function displayRequestedPath(
-  path: string,
-  roots: readonly NormalizedRoot[],
-): string {
+function displayRequestedPath(path: string, roots: readonly NormalizedRoot[]): string {
   const resolvedPath = resolve(path);
   for (const root of roots) {
     if (
-      root.virtualPath && root.virtualResolvedPath &&
+      root.virtualPath &&
+      root.virtualResolvedPath &&
       isWithinRoot(resolvedPath, root.virtualResolvedPath)
     ) {
-      const suffix = relative(
-        root.virtualResolvedPath,
-        resolvedPath,
-      ).replaceAll("\\", "/");
+      const suffix = relative(root.virtualResolvedPath, resolvedPath).replaceAll("\\", "/");
       return suffix ? `${root.virtualPath}/${suffix}` : root.virtualPath;
     }
     if (!root.virtualPath && isWithinRoot(resolvedPath, root.path)) return path;
   }
-  return roots.some((root) => root.virtualPath)
-    ? "<outside-allowed-roots>"
-    : path;
+  return roots.some((root) => root.virtualPath) ? "<outside-allowed-roots>" : path;
 }
 
-function virtualToolError(
-  error: unknown,
-  roots: readonly NormalizedRoot[],
-  cwd: string,
-): Error {
+function virtualToolError(error: unknown, roots: readonly NormalizedRoot[], cwd: string): Error {
   let message = error instanceof Error ? error.message : String(error);
   const replacements = roots
     .flatMap((root) => {
@@ -398,15 +347,11 @@ function virtualToolError(
 function formatRoots(roots: readonly NormalizedRoot[]): string {
   return roots
     .map((root) =>
-      root.virtualPath
-        ? `${root.label}: ${root.virtualPath}/`
-        : `${root.label}: ${root.path}`
+      root.virtualPath ? `${root.label}: ${root.virtualPath}/` : `${root.label}: ${root.path}`,
     )
     .join("; ");
 }
 
 function errorCode(error: unknown): string | undefined {
-  return error && typeof error === "object" && "code" in error
-    ? String(error.code)
-    : undefined;
+  return error && typeof error === "object" && "code" in error ? String(error.code) : undefined;
 }

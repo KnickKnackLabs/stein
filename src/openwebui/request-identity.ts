@@ -35,11 +35,7 @@ export function createSignedOpenWebUiIdentityResolver(
   };
 }
 
-function forwardedSubject(
-  token: string,
-  secret: Buffer,
-  nowSeconds: number,
-): string | undefined {
+function forwardedSubject(token: string, secret: Buffer, nowSeconds: number): string | undefined {
   const parts = token.split(".");
   if (parts.length !== 3 || parts.some((part) => !part)) return undefined;
 
@@ -47,9 +43,7 @@ function forwardedSubject(
   if (header?.alg !== "HS256") return undefined;
 
   const receivedSignature = decodeBase64Url(parts[2]);
-  const expectedSignature = createHmac("sha256", secret)
-    .update(`${parts[0]}.${parts[1]}`)
-    .digest();
+  const expectedSignature = createHmac("sha256", secret).update(`${parts[0]}.${parts[1]}`).digest();
   if (
     !receivedSignature ||
     receivedSignature.length !== expectedSignature.length ||

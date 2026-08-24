@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -71,11 +71,13 @@ describe("FileConversationHistoryStore", () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(store.save(
-      conversationId,
-      snapshot("cancelled-leaf", replacementMessages),
-      controller.signal,
-    )).rejects.toHaveProperty("name", "AbortError");
+    await expect(
+      store.save(
+        conversationId,
+        snapshot("cancelled-leaf", replacementMessages),
+        controller.signal,
+      ),
+    ).rejects.toHaveProperty("name", "AbortError");
     expect(await store.load(conversationId)).toEqual(committed);
     expect(await readdir(directory)).toEqual([`${conversationId}.visible-history.json`]);
   });
@@ -88,41 +90,51 @@ describe("FileConversationHistoryStore", () => {
     await mkdir(directory, { recursive: true });
     const conversationId = "b".repeat(64);
     const path = join(directory, `${conversationId}.visible-history.json`);
-    await writeFile(path, JSON.stringify({
-      version: 1,
-      messages: [{ role: "system", content: "invalid" }],
-      committedLeafId: "leaf",
-    }));
+    await writeFile(
+      path,
+      JSON.stringify({
+        version: 1,
+        messages: [{ role: "system", content: "invalid" }],
+        committedLeafId: "leaf",
+      }),
+    );
     await expect(store.load(conversationId)).rejects.toThrow(
       "Invalid visible conversation history messages",
     );
 
-    await writeFile(path, JSON.stringify({
-      version: 1,
-      messages: [],
-      committedLeafId: "impossible-leaf",
-    }));
+    await writeFile(
+      path,
+      JSON.stringify({
+        version: 1,
+        messages: [],
+        committedLeafId: "impossible-leaf",
+      }),
+    );
     await expect(store.load(conversationId)).rejects.toThrow(
       "history and committed Pi leaf disagree",
     );
 
-    await writeFile(path, JSON.stringify({
-      version: 1,
-      messages: firstMessages,
-      committedLeafId: null,
-    }));
+    await writeFile(
+      path,
+      JSON.stringify({
+        version: 1,
+        messages: firstMessages,
+        committedLeafId: null,
+      }),
+    );
     await expect(store.load(conversationId)).rejects.toThrow(
       "history and committed Pi leaf disagree",
     );
 
-    await writeFile(path, JSON.stringify({
-      version: 1,
-      messages: [{ role: "assistant", content: "out of order" }],
-      committedLeafId: "leaf",
-    }));
-    await expect(store.load(conversationId)).rejects.toThrow(
-      "not a sequence of committed turns",
+    await writeFile(
+      path,
+      JSON.stringify({
+        version: 1,
+        messages: [{ role: "assistant", content: "out of order" }],
+        committedLeafId: "leaf",
+      }),
     );
+    await expect(store.load(conversationId)).rejects.toThrow("not a sequence of committed turns");
   });
 
   test("rejects corrupt and legacy array-only history without guessing", async () => {
@@ -149,11 +161,9 @@ describe("FileConversationHistoryStore", () => {
     await mkdir(join(directory, `${conversationId}.visible-history.json`), { recursive: true });
     const store = new FileConversationHistoryStore(directory);
 
-    await expect(store.save(
-      conversationId,
-      snapshot("leaf", firstMessages),
-      activeSignal(),
-    )).rejects.toBeDefined();
+    await expect(
+      store.save(conversationId, snapshot("leaf", firstMessages), activeSignal()),
+    ).rejects.toBeDefined();
     expect(await readdir(directory)).toEqual([`${conversationId}.visible-history.json`]);
   });
 

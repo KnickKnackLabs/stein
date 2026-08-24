@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { SessionAgent } from "../session/session-agent.ts";
+import type { SessionAgent } from "../session/session-agent.ts";
 import {
   Conversation,
   type ConversationHistorySnapshot,

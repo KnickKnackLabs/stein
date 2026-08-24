@@ -14,18 +14,18 @@ export type SessionActivityTarget =
 
 export type SessionActivityEvent =
   | Readonly<{
-    type: "tool";
-    toolName: string;
-    target?: SessionActivityTarget;
-    status: "running";
-  }>
+      type: "tool";
+      toolName: string;
+      target?: SessionActivityTarget;
+      status: "running";
+    }>
   | Readonly<{
-    type: "tool";
-    toolName: string;
-    target?: SessionActivityTarget;
-    status: "ok" | "error";
-    durationMs?: number;
-  }>;
+      type: "tool";
+      toolName: string;
+      target?: SessionActivityTarget;
+      status: "ok" | "error";
+      durationMs?: number;
+    }>;
 
 export type SessionActivityOptions = Readonly<{
   roots: readonly SessionActivityRoot[];
@@ -68,16 +68,14 @@ export function subscribeToSessionActivity(
     throw new Error("activity sink must be a function");
   }
   const roots = normalizeRoots(options.roots);
-  const runningThresholdMs = options.runningThresholdMs ??
-    DEFAULT_RUNNING_THRESHOLD_MS;
+  const runningThresholdMs = options.runningThresholdMs ?? DEFAULT_RUNNING_THRESHOLD_MS;
   if (!Number.isFinite(runningThresholdMs) || runningThresholdMs < 0) {
     throw new Error("activity runningThresholdMs must be a non-negative number");
   }
   const now = runtime.now ?? (() => performance.now());
-  const schedule = runtime.schedule ??
-    ((callback, delayMs) => setTimeout(callback, delayMs));
-  const cancel = runtime.cancel ??
-    ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
+  const schedule = runtime.schedule ?? ((callback, delayMs) => setTimeout(callback, delayMs));
+  const cancel =
+    runtime.cancel ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
   const pendingCalls = new Map<string, PendingToolCall>();
   let disposed = false;
 
@@ -153,9 +151,7 @@ export function subscribeToSessionActivity(
 function normalizeRoots(roots: readonly SessionActivityRoot[]): NormalizedRoot[] {
   const virtualPaths = new Set<string>();
   return roots.map((root, index) => {
-    const virtualPath = posix.normalize(
-      root.virtualPath.replaceAll("\\", "/"),
-    ).replace(/\/$/, "");
+    const virtualPath = posix.normalize(root.virtualPath.replaceAll("\\", "/")).replace(/\/$/, "");
     if (!/^[a-z][a-z0-9-]*$/.test(virtualPath)) {
       throw new Error(
         `activity roots[${index}].virtualPath must be one lowercase top-level path segment`,
@@ -178,25 +174,17 @@ function activityTarget(
 ): SessionActivityTarget | undefined {
   const path = toolPath(args);
   if (!path) return undefined;
-  const virtualPath = normalizedVirtualPath(path, roots) ??
-    virtualPathForAbsolutePath(path, roots);
+  const virtualPath = normalizedVirtualPath(path, roots) ?? virtualPathForAbsolutePath(path, roots);
   return virtualPath && isSafeVirtualPath(virtualPath)
     ? { kind: "virtual", path: virtualPath }
     : { kind: "redacted" };
 }
 
-function normalizedVirtualPath(
-  path: string,
-  roots: readonly NormalizedRoot[],
-): string | undefined {
-  const normalized = posix.normalize(path.replaceAll("\\", "/")).replace(
-    /^\.\//,
-    "",
-  );
-  return roots.some((root) =>
-      normalized === root.virtualPath ||
-      normalized.startsWith(`${root.virtualPath}/`)
-    )
+function normalizedVirtualPath(path: string, roots: readonly NormalizedRoot[]): string | undefined {
+  const normalized = posix.normalize(path.replaceAll("\\", "/")).replace(/^\.\//, "");
+  return roots.some(
+    (root) => normalized === root.virtualPath || normalized.startsWith(`${root.virtualPath}/`),
+  )
     ? normalized
     : undefined;
 }
@@ -229,18 +217,14 @@ function isSafeVirtualPath(path: string): boolean {
   return /^[A-Za-z0-9._/-]+$/.test(path);
 }
 
-function elapsedMilliseconds(
-  completedAt: number,
-  startedAt: number,
-): number | undefined {
+function elapsedMilliseconds(completedAt: number, startedAt: number): number | undefined {
   const elapsed = completedAt - startedAt;
   return Number.isFinite(elapsed) ? Math.max(0, elapsed) : undefined;
 }
 
 function isWithin(path: string, root: string): boolean {
   const fromRoot = relative(resolve(root), resolve(path));
-  return fromRoot === "" ||
-    (!fromRoot.startsWith("..") && !isAbsolute(fromRoot));
+  return fromRoot === "" || (!fromRoot.startsWith("..") && !isAbsolute(fromRoot));
 }
 
 function isToolStart(event: Record<string, unknown>): event is Record<string, unknown> & {
@@ -249,9 +233,11 @@ function isToolStart(event: Record<string, unknown>): event is Record<string, un
   toolName: string;
   args: unknown;
 } {
-  return event.type === "tool_execution_start" &&
+  return (
+    event.type === "tool_execution_start" &&
     typeof event.toolCallId === "string" &&
-    typeof event.toolName === "string";
+    typeof event.toolName === "string"
+  );
 }
 
 function isToolEnd(event: Record<string, unknown>): event is Record<string, unknown> & {
@@ -260,10 +246,12 @@ function isToolEnd(event: Record<string, unknown>): event is Record<string, unkn
   toolName: string;
   isError: boolean;
 } {
-  return event.type === "tool_execution_end" &&
+  return (
+    event.type === "tool_execution_end" &&
     typeof event.toolCallId === "string" &&
     typeof event.toolName === "string" &&
-    typeof event.isError === "boolean";
+    typeof event.isError === "boolean"
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -40,7 +40,5 @@ function assertConversationId(value: string): void {
 }
 
 function errorCode(error: unknown): string | undefined {
-  return error && typeof error === "object" && "code" in error
-    ? String(error.code)
-    : undefined;
+  return error && typeof error === "object" && "code" in error ? String(error.code) : undefined;
 }

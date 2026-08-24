@@ -11,11 +11,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type {
-  ExtensionContext,
-  ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createScopedFilesystemTools } from "../../src/files/scoped-filesystem-tools.ts";
+import type { PiToolDefinition } from "../../src/session/tool-definition.ts";
 
 test("scopes private notes and conversation files without exposing host paths", async () => {
   const root = mkdtempSync(join(tmpdir(), "stein-scoped-files-"));
@@ -39,17 +37,23 @@ test("scopes private notes and conversation files without exposing host paths", 
           virtualPath: "conversation",
         },
       ],
-      writeRoots: [{
-        label: "conversation",
-        path: conversation,
-        virtualPath: "conversation",
-      }],
+      writeRoots: [
+        {
+          label: "conversation",
+          path: conversation,
+          virtualPath: "conversation",
+        },
+      ],
       writeDenyGlobs: ["protected/**"],
     });
 
-    expect(textContent(await execute(tools, "read", {
-      path: "notes/guidance.md",
-    }))).toContain("domain-neutral guidance");
+    expect(
+      textContent(
+        await execute(tools, "read", {
+          path: "notes/guidance.md",
+        }),
+      ),
+    ).toContain("domain-neutral guidance");
 
     await execute(tools, "write", {
       path: "conversation/drafts/session-note.md",
@@ -65,39 +69,57 @@ test("scopes private notes and conversation files without exposing host paths", 
     expect(statSync(drafts).mode & 0o777).toBe(0o700);
     expect(statSync(draft).mode & 0o777).toBe(0o600);
 
-    const listed = textContent(await execute(tools, "ls", {
-      path: "conversation/drafts",
-    }));
+    const listed = textContent(
+      await execute(tools, "ls", {
+        path: "conversation/drafts",
+      }),
+    );
     expect(listed).toContain("session-note.md");
-    expect(textContent(await execute(tools, "read", {
-      path: "conversation/drafts/session-note.md",
-    }))).toContain("revised draft");
+    expect(
+      textContent(
+        await execute(tools, "read", {
+          path: "conversation/drafts/session-note.md",
+        }),
+      ),
+    ).toContain("revised draft");
 
-    const found = textContent(await execute(tools, "find", {
-      pattern: "*.md",
-      path: "notes",
-    }));
+    const found = textContent(
+      await execute(tools, "find", {
+        pattern: "*.md",
+        path: "notes",
+      }),
+    );
     expect(found).toContain("notes/guidance.md");
     expect(found).not.toContain(root);
 
-    await expect(execute(tools, "write", {
-      path: "notes/changed.md",
-      content: "denied\n",
-    })).rejects.toThrow("Access denied");
-    await expect(execute(tools, "write", {
-      path: "conversation/protected/changed.md",
-      content: "denied\n",
-    })).rejects.toThrow("read-only");
-    await expect(execute(tools, "grep", {
-      pattern: "outside",
-      path: outside,
-    })).rejects.toThrow("Access denied");
-    await expect(execute(tools, "read", {
-      path: "conversation/../outside/secret.md",
-    })).rejects.toThrow("Access denied");
-    await expect(execute(tools, "read", {
-      path: "conversation/linked.md",
-    })).rejects.toThrow("Access denied");
+    await expect(
+      execute(tools, "write", {
+        path: "notes/changed.md",
+        content: "denied\n",
+      }),
+    ).rejects.toThrow("Access denied");
+    await expect(
+      execute(tools, "write", {
+        path: "conversation/protected/changed.md",
+        content: "denied\n",
+      }),
+    ).rejects.toThrow("read-only");
+    await expect(
+      execute(tools, "grep", {
+        pattern: "outside",
+        path: outside,
+      }),
+    ).rejects.toThrow("Access denied");
+    await expect(
+      execute(tools, "read", {
+        path: "conversation/../outside/secret.md",
+      }),
+    ).rejects.toThrow("Access denied");
+    await expect(
+      execute(tools, "read", {
+        path: "conversation/linked.md",
+      }),
+    ).rejects.toThrow("Access denied");
     expect(existsSync(join(outside, "changed.md"))).toBe(false);
 
     try {
@@ -114,20 +136,10 @@ test("scopes private notes and conversation files without exposing host paths", 
   }
 });
 
-async function execute(
-  tools: ToolDefinition<any, any, any>[],
-  name: string,
-  params: unknown,
-): Promise<unknown> {
+async function execute(tools: PiToolDefinition[], name: string, params: unknown): Promise<unknown> {
   const tool = tools.find((candidate) => candidate.name === name);
   if (!tool) throw new Error(`missing tool: ${name}`);
-  return tool.execute(
-    "call_1",
-    params,
-    undefined,
-    undefined,
-    {} as ExtensionContext,
-  );
+  return tool.execute("call_1", params, undefined, undefined, {} as ExtensionContext);
 }
 
 function textContent(result: unknown): string {

@@ -6,9 +6,7 @@ import { createScopedFilesystemAccess } from "../../src/files/scoped-filesystem-
 
 const roots: string[] = [];
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) =>
-    rm(root, { recursive: true, force: true })
-  ));
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe("scoped filesystem policy", () => {
@@ -23,72 +21,87 @@ describe("scoped filesystem policy", () => {
           virtualPath: "conversation",
         },
       ],
-      writeRoots: [{
-        label: "conversation",
-        path: fixture.conversation,
-        virtualPath: "conversation",
-      }],
+      writeRoots: [
+        {
+          label: "conversation",
+          path: fixture.conversation,
+          virtualPath: "conversation",
+        },
+      ],
     });
 
-    expect(await scoped.resolveRead(
-      "notes/guidance.md",
-      "read",
-    )).toBe(join(fixture.notes, "guidance.md"));
-    expect(await scoped.resolveWrite(
-      "conversation/session-note.md",
-      "write",
-    )).toBe(join(fixture.conversation, "session-note.md"));
-    await expect(scoped.resolveWrite(
-      join(fixture.root, "notes/changed.md"),
-      "write",
-    )).rejects.toThrow("Access denied");
+    expect(await scoped.resolveRead("notes/guidance.md", "read")).toBe(
+      join(fixture.notes, "guidance.md"),
+    );
+    expect(await scoped.resolveWrite("conversation/session-note.md", "write")).toBe(
+      join(fixture.conversation, "session-note.md"),
+    );
+    await expect(
+      scoped.resolveWrite(join(fixture.root, "notes/changed.md"), "write"),
+    ).rejects.toThrow("Access denied");
   });
 
   test("validates roots and enforces write deny globs", async () => {
     const fixture = await createFixture();
-    expect(() => createScopedFilesystemAccess(fixture.root, {
-      readRoots: [],
-      writeRoots: [{ label: "conversation", path: fixture.conversation }],
-    })).toThrow("readRoots must not be empty");
-    expect(() => createScopedFilesystemAccess(fixture.root, {
-      readRoots: [{ label: "notes", path: "relative-notes" }],
-      writeRoots: [{ label: "conversation", path: fixture.conversation }],
-    })).toThrow("readRoots paths must be absolute");
-    expect(() => createScopedFilesystemAccess(fixture.root, {
-      readRoots: [{ label: " ", path: fixture.notes }],
-      writeRoots: [{ label: "conversation", path: fixture.conversation }],
-    })).toThrow("readRoots labels must not be empty");
-    expect(() => createScopedFilesystemAccess(fixture.root, {
-      readRoots: [{
-        label: "notes",
-        path: fixture.notes,
-        virtualPath: "shared",
-      }],
-      writeRoots: [{
-        label: "conversation",
-        path: fixture.conversation,
-        virtualPath: "shared",
-      }],
-    })).toThrow("conflicting host roots");
+    expect(() =>
+      createScopedFilesystemAccess(fixture.root, {
+        readRoots: [],
+        writeRoots: [{ label: "conversation", path: fixture.conversation }],
+      }),
+    ).toThrow("readRoots must not be empty");
+    expect(() =>
+      createScopedFilesystemAccess(fixture.root, {
+        readRoots: [{ label: "notes", path: "relative-notes" }],
+        writeRoots: [{ label: "conversation", path: fixture.conversation }],
+      }),
+    ).toThrow("readRoots paths must be absolute");
+    expect(() =>
+      createScopedFilesystemAccess(fixture.root, {
+        readRoots: [{ label: " ", path: fixture.notes }],
+        writeRoots: [{ label: "conversation", path: fixture.conversation }],
+      }),
+    ).toThrow("readRoots labels must not be empty");
+    expect(() =>
+      createScopedFilesystemAccess(fixture.root, {
+        readRoots: [
+          {
+            label: "notes",
+            path: fixture.notes,
+            virtualPath: "shared",
+          },
+        ],
+        writeRoots: [
+          {
+            label: "conversation",
+            path: fixture.conversation,
+            virtualPath: "shared",
+          },
+        ],
+      }),
+    ).toThrow("conflicting host roots");
 
     const scoped = createScopedFilesystemAccess(fixture.root, {
-      readRoots: [{
-        label: "conversation",
-        path: fixture.conversation,
-        virtualPath: "conversation",
-      }],
-      writeRoots: [{
-        label: "conversation",
-        path: fixture.conversation,
-        virtualPath: "conversation",
-      }],
+      readRoots: [
+        {
+          label: "conversation",
+          path: fixture.conversation,
+          virtualPath: "conversation",
+        },
+      ],
+      writeRoots: [
+        {
+          label: "conversation",
+          path: fixture.conversation,
+          virtualPath: "conversation",
+        },
+      ],
       writeDenyGlobs: ["protected/**", "*.lock"],
     });
-    expect(await scoped.resolveWrite("conversation/draft.md", "write"))
-      .toBe(join(fixture.conversation, "draft.md"));
+    expect(await scoped.resolveWrite("conversation/draft.md", "write")).toBe(
+      join(fixture.conversation, "draft.md"),
+    );
     for (const path of ["conversation/protected/file.md", "conversation/state.lock"]) {
-      await expect(scoped.resolveWrite(path, "write"))
-        .rejects.toThrow("read-only");
+      await expect(scoped.resolveWrite(path, "write")).rejects.toThrow("read-only");
     }
   });
 
@@ -98,16 +111,20 @@ describe("scoped filesystem policy", () => {
     await writeFile(outsideFile, "outside\n", { mode: 0o600 });
     await symlink(outsideFile, join(fixture.conversation, "linked.md"));
     const scoped = createScopedFilesystemAccess(fixture.root, {
-      readRoots: [{
-        label: "conversation",
-        path: fixture.conversation,
-        virtualPath: "conversation",
-      }],
-      writeRoots: [{
-        label: "conversation",
-        path: fixture.conversation,
-        virtualPath: "conversation",
-      }],
+      readRoots: [
+        {
+          label: "conversation",
+          path: fixture.conversation,
+          virtualPath: "conversation",
+        },
+      ],
+      writeRoots: [
+        {
+          label: "conversation",
+          path: fixture.conversation,
+          virtualPath: "conversation",
+        },
+      ],
     });
 
     for (const path of [

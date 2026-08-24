@@ -1,9 +1,6 @@
 import { chmod, mkdir } from "node:fs/promises";
 import { FileConversationHistoryStore } from "../conversation/file-history-store.ts";
-import {
-  readPrivateTextFile,
-  readPrivateTextLines,
-} from "../files/private-text-file.ts";
+import { readPrivateTextFile, readPrivateTextLines } from "../files/private-text-file.ts";
 import { OpenAIChatService } from "../openai/chat-service.ts";
 import { openWebUiHeaderIdentityResolver } from "../openwebui/request-identity.ts";
 import { createPiSessionFactory } from "../session/pi-session.ts";
@@ -55,8 +52,7 @@ export async function runServer(config: ServerConfig): Promise<never> {
   const server = Bun.serve({
     hostname: config.hostname,
     port: config.port,
-    fetch: (request, requestServer) =>
-      handleServerRequest(service, request, requestServer),
+    fetch: (request, requestServer) => handleServerRequest(service, request, requestServer),
   });
   process.stdout.write(`Stein session service listening on ${server.url.origin}\n`);
   return new Promise<never>(() => undefined);

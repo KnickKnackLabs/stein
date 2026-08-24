@@ -11,6 +11,4 @@ export type AttachmentNormalizerResult = Readonly<{
   attachments: ConversationMessage["attachments"];
 }>;
 
-export type AttachmentNormalizer = (
-  input: AttachmentNormalizerInput,
-) => AttachmentNormalizerResult;
+export type AttachmentNormalizer = (input: AttachmentNormalizerInput) => AttachmentNormalizerResult;

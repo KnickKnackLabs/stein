@@ -1,4 +1,4 @@
-import { SessionAgent, type SessionCheckpoint } from "../session/session-agent.ts";
+import type { SessionAgent, SessionCheckpoint } from "../session/session-agent.ts";
 import type { SessionAttachment } from "../session/session-turn.ts";
 
 export type ConversationMessage = Readonly<{
@@ -32,9 +32,7 @@ export function emptyConversationHistorySnapshot(): ConversationHistorySnapshot 
   return { version: 1, messages: [], committedLeafId: null };
 }
 
-export function validateConversationHistorySnapshot(
-  value: ConversationHistorySnapshot,
-): void {
+export function validateConversationHistorySnapshot(value: ConversationHistorySnapshot): void {
   if (value.version !== 1 || !Array.isArray(value.messages)) {
     throw new Error("Invalid visible conversation history snapshot");
   }
@@ -49,8 +47,8 @@ export function validateConversationHistorySnapshot(
   }
   if (
     value.messages.length % 2 !== 0 ||
-    value.messages.some((message, index) =>
-      message.role !== (index % 2 === 0 ? "user" : "assistant")
+    value.messages.some(
+      (message, index) => message.role !== (index % 2 === 0 ? "user" : "assistant"),
     )
   ) {
     throw new Error("Visible conversation history is not a sequence of committed turns");
@@ -98,7 +96,7 @@ export class Conversation {
     }
 
     const lastMessage = messages.at(-1);
-    if (!lastMessage || lastMessage.role !== "user") {
+    if (lastMessage?.role !== "user") {
       throw new Error("Last conversation message must be a user message");
     }
     if (!sameVisibleHistory(messages.slice(0, -1), this.#history)) {
@@ -253,14 +251,11 @@ class ActiveConversationTurn implements ConversationTurn {
   }
 }
 
-function isVisibleConversationMessage(
-  value: unknown,
-): value is VisibleConversationMessage {
+function isVisibleConversationMessage(value: unknown): value is VisibleConversationMessage {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   return (
-    (record.role === "user" || record.role === "assistant") &&
-    typeof record.content === "string"
+    (record.role === "user" || record.role === "assistant") && typeof record.content === "string"
   );
 }
 

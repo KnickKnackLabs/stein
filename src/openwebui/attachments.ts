@@ -23,9 +23,7 @@ export const kklOpenWebUiAttachmentNormalizer: AttachmentNormalizer = ({
     },
   );
   return {
-    content: matched
-      ? stripped.replace(/<\/?attached_files>\s*/g, "").trim()
-      : content,
+    content: matched ? stripped.replace(/<\/?attached_files>\s*/g, "").trim() : content,
     attachments: [...embedded, ...structured],
   };
 };

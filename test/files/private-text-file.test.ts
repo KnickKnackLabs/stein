@@ -2,10 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  readPrivateTextFile,
-  readPrivateTextLines,
-} from "../../src/files/private-text-file.ts";
+import { readPrivateTextFile, readPrivateTextLines } from "../../src/files/private-text-file.ts";
 
 const roots: string[] = [];
 
@@ -30,20 +27,19 @@ describe("private text files", () => {
 
   test("reads trimmed non-empty values one per line", async () => {
     const path = await privateFixture(" first-token \n\nsecond-token\r\n");
-    expect(await readPrivateTextLines(path, "Token file")).toEqual([
-      "first-token",
-      "second-token",
-    ]);
+    expect(await readPrivateTextLines(path, "Token file")).toEqual(["first-token", "second-token"]);
   });
 
   test("rejects group- or world-accessible input", async () => {
     const groupReadable = await privateFixture("private input", 0o640);
     const worldReadable = await privateFixture("private input", 0o604);
 
-    await expect(readPrivateTextFile(groupReadable, "Input file"))
-      .rejects.toThrow("group or other users");
-    await expect(readPrivateTextFile(worldReadable, "Input file"))
-      .rejects.toThrow("group or other users");
+    await expect(readPrivateTextFile(groupReadable, "Input file")).rejects.toThrow(
+      "group or other users",
+    );
+    await expect(readPrivateTextFile(worldReadable, "Input file")).rejects.toThrow(
+      "group or other users",
+    );
   });
 
   test("rejects directories and symbolic links", async () => {
@@ -54,9 +50,7 @@ describe("private text files", () => {
     await writeFile(target, "private input", { mode: 0o600 });
     await symlink(target, link);
 
-    await expect(readPrivateTextFile(root, "Input file"))
-      .rejects.toThrow("regular file");
-    await expect(readPrivateTextFile(link, "Input file"))
-      .rejects.toThrow("symbolic link");
+    await expect(readPrivateTextFile(root, "Input file")).rejects.toThrow("regular file");
+    await expect(readPrivateTextFile(link, "Input file")).rejects.toThrow("symbolic link");
   });
 });

@@ -1,5 +1,5 @@
-import { createHmac } from "node:crypto";
 import { describe, expect, test } from "bun:test";
+import { createHmac } from "node:crypto";
 import {
   createSignedOpenWebUiIdentityResolver,
   openWebUiHeaderIdentityResolver,
@@ -25,9 +25,7 @@ function token(
     exp: NOW + 60,
     ...claims,
   })}`;
-  const signature = createHmac(algorithm, secret)
-    .update(signingInput)
-    .digest("base64url");
+  const signature = createHmac(algorithm, secret).update(signingInput).digest("base64url");
   return `${signingInput}.${signature}`;
 }
 
@@ -59,9 +57,13 @@ describe("Open WebUI request identity", () => {
       chatId: "fictional-chat",
     });
     expect(openWebUiHeaderIdentityResolver(request(undefined))).toBeUndefined();
-    expect(openWebUiHeaderIdentityResolver(request(undefined, " ", {
-      "x-openwebui-user-id": "fictional-user",
-    }))).toBeUndefined();
+    expect(
+      openWebUiHeaderIdentityResolver(
+        request(undefined, " ", {
+          "x-openwebui-user-id": "fictional-user",
+        }),
+      ),
+    ).toBeUndefined();
   });
 
   test("accepts a signed subject and explicit chat id at the time boundary", () => {
@@ -74,15 +76,23 @@ describe("Open WebUI request identity", () => {
 
   test("ignores unsigned Open WebUI identity fields", () => {
     const resolver = signedResolver();
-    expect(resolver(request(token({ sub: "signed-user" }), "fictional-chat", {
-      "x-openwebui-user-id": "spoofed-user",
-      "x-openwebui-user-email": "spoofed@example.test",
-      "x-openwebui-user-name": "Spoofed User",
-      "x-openwebui-user-role": "admin",
-    }))).toEqual({ userId: "signed-user", chatId: "fictional-chat" });
-    expect(resolver(request(undefined, "fictional-chat", {
-      "x-openwebui-user-id": "unsigned-user",
-    }))).toBeUndefined();
+    expect(
+      resolver(
+        request(token({ sub: "signed-user" }), "fictional-chat", {
+          "x-openwebui-user-id": "spoofed-user",
+          "x-openwebui-user-email": "spoofed@example.test",
+          "x-openwebui-user-name": "Spoofed User",
+          "x-openwebui-user-role": "admin",
+        }),
+      ),
+    ).toEqual({ userId: "signed-user", chatId: "fictional-chat" });
+    expect(
+      resolver(
+        request(undefined, "fictional-chat", {
+          "x-openwebui-user-id": "unsigned-user",
+        }),
+      ),
+    ).toBeUndefined();
   });
 
   test("rejects empty secrets and algorithm confusion", () => {
@@ -152,8 +162,7 @@ describe("Open WebUI request identity", () => {
     const shortSignature = `${header}.${payload}.${Buffer.alloc(31).toString("base64url")}`;
 
     expect(resolver(request(tampered))).toBeUndefined();
-    expect(resolver(request(token({}, undefined, "sha256", "wrong-secret"))))
-      .toBeUndefined();
+    expect(resolver(request(token({}, undefined, "sha256", "wrong-secret")))).toBeUndefined();
     expect(resolver(request(shortSignature))).toBeUndefined();
   });
 });

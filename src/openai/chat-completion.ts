@@ -36,7 +36,7 @@ export function parseChatCompletion(
 
   const budget: RequestBudget = { attachmentCount: 0, textBytes: 0 };
   const messages = value.messages.map((message, index) =>
-    parseMessage(message, index, budget, normalizeAttachments)
+    parseMessage(message, index, budget, normalizeAttachments),
   );
   if (messages.at(-1)?.role !== "user") {
     throw new InvalidChatCompletionError("Last message must be a user message");
@@ -78,10 +78,7 @@ function parseMessage(
   }) ?? { content: value.content, attachments: structured };
   const { content, attachments } = validateNormalizedMessage(normalized, index);
   accountMessage(content, attachments, budget);
-  if (
-    !content.trim() &&
-    !attachments.some((attachment) => attachment.text.trim())
-  ) {
+  if (!content.trim() && !attachments.some((attachment) => attachment.text.trim())) {
     throw new InvalidChatCompletionError(
       `messages[${index}] user turn must contain text or non-empty attached text`,
     );
@@ -93,11 +90,7 @@ function validateNormalizedMessage(
   value: unknown,
   messageIndex: number,
 ): Pick<ConversationMessage, "content" | "attachments"> {
-  if (
-    !isRecord(value) ||
-    typeof value.content !== "string" ||
-    !Array.isArray(value.attachments)
-  ) {
+  if (!isRecord(value) || typeof value.content !== "string" || !Array.isArray(value.attachments)) {
     throw new InvalidChatCompletionError(
       `messages[${messageIndex}] attachment normalizer must return content and attachments`,
     );

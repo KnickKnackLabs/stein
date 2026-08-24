@@ -1,7 +1,4 @@
-import type {
-  PiSession,
-  PiSessionBranchManager,
-} from "../../src/session/session-agent.ts";
+import type { PiSession, PiSessionBranchManager } from "../../src/session/session-agent.ts";
 
 export class FakeSessionManager implements PiSessionBranchManager {
   leafId: string | null = null;
@@ -9,15 +6,25 @@ export class FakeSessionManager implements PiSessionBranchManager {
   readonly customEntries: Array<{ type: string; data: unknown }> = [];
   #nextId = 0;
 
-  getLeafId(): string | null { return this.leafId; }
-  branch(entryId: string): void { this.branches.push(entryId); this.leafId = entryId; }
-  resetLeaf(): void { this.branches.push(null); this.leafId = null; }
+  getLeafId(): string | null {
+    return this.leafId;
+  }
+  branch(entryId: string): void {
+    this.branches.push(entryId);
+    this.leafId = entryId;
+  }
+  resetLeaf(): void {
+    this.branches.push(null);
+    this.leafId = null;
+  }
   appendCustomEntry(type: string, data?: unknown): string {
     this.customEntries.push({ type, data });
     this.leafId = `session-${++this.#nextId}`;
     return this.leafId;
   }
-  advance(): void { this.leafId = `session-${++this.#nextId}`; }
+  advance(): void {
+    this.leafId = `session-${++this.#nextId}`;
+  }
 }
 
 export class FakePiSession implements PiSession {
@@ -66,5 +73,7 @@ export class FakePiSession implements PiSession {
     await this.abortGate;
   }
 
-  dispose(): void { this.disposeCount += 1; }
+  dispose(): void {
+    this.disposeCount += 1;
+  }
 }

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   SessionTerminalError,
-  streamSessionText,
   type SessionTextSource,
+  streamSessionText,
 } from "../../src/session/session-text-stream.ts";
 
 class FakeSource implements SessionTextSource {
@@ -44,7 +44,9 @@ class FakeSource implements SessionTextSource {
     if (this.shouldFail) throw this.failure;
   }
 
-  async abort(): Promise<void> { this.abortCount += 1; }
+  async abort(): Promise<void> {
+    this.abortCount += 1;
+  }
 }
 
 async function collect(chunks: AsyncIterable<string>): Promise<string[]> {
@@ -65,13 +67,17 @@ describe("session text stream", () => {
   test("unsubscribes after synchronous and asynchronous prompt failures", async () => {
     const synchronous = new FakeSource();
     synchronous.synchronousFailure = new Error("synchronous failure");
-    expect(collect(streamSessionText(synchronous, "prompt"))).rejects.toThrow("synchronous failure");
+    expect(collect(streamSessionText(synchronous, "prompt"))).rejects.toThrow(
+      "synchronous failure",
+    );
     expect(synchronous.unsubscribeCount).toBe(1);
 
     const asynchronous = new FakeSource();
     asynchronous.shouldFail = true;
     asynchronous.failure = new Error("asynchronous failure");
-    expect(collect(streamSessionText(asynchronous, "prompt"))).rejects.toThrow("asynchronous failure");
+    expect(collect(streamSessionText(asynchronous, "prompt"))).rejects.toThrow(
+      "asynchronous failure",
+    );
     expect(asynchronous.unsubscribeCount).toBe(1);
   });
 
@@ -84,14 +90,16 @@ describe("session text stream", () => {
 
   test("fails on Pi assistant error and aborted terminal events", async () => {
     const updateError = new FakeSource();
-    updateError.events = [{
-      type: "message_update",
-      assistantMessageEvent: {
-        type: "error",
-        reason: "error",
-        error: { errorMessage: "fictional private provider detail" },
+    updateError.events = [
+      {
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "error",
+          reason: "error",
+          error: { errorMessage: "fictional private provider detail" },
+        },
       },
-    }];
+    ];
     await expect(collect(streamSessionText(updateError, "prompt"))).rejects.toMatchObject({
       name: "SessionTerminalError",
       code: "assistant_error",
@@ -99,14 +107,16 @@ describe("session text stream", () => {
     });
 
     const messageEndAbort = new FakeSource();
-    messageEndAbort.events = [{
-      type: "message_end",
-      message: {
-        role: "assistant",
-        stopReason: "aborted",
-        errorMessage: "fictional private abort detail",
+    messageEndAbort.events = [
+      {
+        type: "message_end",
+        message: {
+          role: "assistant",
+          stopReason: "aborted",
+          errorMessage: "fictional private abort detail",
+        },
       },
-    }];
+    ];
     const failure = await collect(streamSessionText(messageEndAbort, "prompt")).catch(
       (error: unknown) => error,
     );
@@ -154,10 +164,12 @@ describe("session text stream", () => {
   test("fails length-limited and zero-visible-output turns", async () => {
     const lengthLimited = new FakeSource();
     lengthLimited.responses = ["partial draft"];
-    lengthLimited.events = [{
-      type: "message_end",
-      message: { role: "assistant", stopReason: "length" },
-    }];
+    lengthLimited.events = [
+      {
+        type: "message_end",
+        message: { role: "assistant", stopReason: "length" },
+      },
+    ];
     await expect(collect(streamSessionText(lengthLimited, "prompt"))).rejects.toMatchObject({
       name: "SessionTerminalError",
       code: "assistant_length",
@@ -179,11 +191,15 @@ describe("session text stream", () => {
     let releasePrompt = () => {};
     const source = new FakeSource();
     source.responses = ["first"];
-    source.events = [{
-      type: "message_end",
-      message: { role: "assistant", stopReason: "stop" },
-    }];
-    source.promptGate = new Promise<void>((resolve) => { releasePrompt = resolve; });
+    source.events = [
+      {
+        type: "message_end",
+        message: { role: "assistant", stopReason: "stop" },
+      },
+    ];
+    source.promptGate = new Promise<void>((resolve) => {
+      releasePrompt = resolve;
+    });
     const iterator = streamSessionText(source, "prompt")[Symbol.asyncIterator]();
 
     expect(await iterator.next()).toEqual({ value: "first", done: false });

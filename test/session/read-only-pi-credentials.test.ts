@@ -18,24 +18,28 @@ const models = {
       baseUrl: "http://127.0.0.1:8080/v1",
       api: "openai-completions",
       authHeader: true,
-      models: [{
-        id: modelId,
-        name: "Deterministic",
-        reasoning: false,
-        input: ["text"],
-        contextWindow: 4096,
-        maxTokens: 256,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      }],
+      models: [
+        {
+          id: modelId,
+          name: "Deterministic",
+          reasoning: false,
+          input: ["text"],
+          contextWindow: 4096,
+          maxTokens: 256,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
     },
   },
 };
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map(async ({ root, agentDirectory }) => {
-    await chmod(agentDirectory, 0o700).catch(() => undefined);
-    await rm(root, { recursive: true, force: true });
-  }));
+  await Promise.all(
+    roots.splice(0).map(async ({ root, agentDirectory }) => {
+      await chmod(agentDirectory, 0o700).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }),
+  );
 });
 
 async function piAgentDirectory(
@@ -84,8 +88,7 @@ describe("read-only Pi credentials", () => {
       key: "fictional-api-key",
     });
     expect(await credentials.read("other-provider")).toBeUndefined();
-    await expect(credentials.modify(provider, async () => undefined))
-      .rejects.toThrow("read-only");
+    await expect(credentials.modify(provider, async () => undefined)).rejects.toThrow("read-only");
     await expect(credentials.delete(provider)).rejects.toThrow("read-only");
   });
 
@@ -93,13 +96,15 @@ describe("read-only Pi credentials", () => {
     const missing = await piAgentDirectory(true, {
       "other-provider": { type: "api_key", key: "fictional-other-key" },
     });
-    await expect(readOnlyPiApiKeyCredentials(missing.authPath, provider))
-      .rejects.toThrow(`no static API key for provider: ${provider}`);
+    await expect(readOnlyPiApiKeyCredentials(missing.authPath, provider)).rejects.toThrow(
+      `no static API key for provider: ${provider}`,
+    );
 
     const dynamic = await piAgentDirectory(true, {
       [provider]: { type: "api_key", key: { command: "ambient-fallback" } },
     });
-    await expect(readOnlyPiApiKeyCredentials(dynamic.authPath, provider))
-      .rejects.toThrow(`no static API key for provider: ${provider}`);
+    await expect(readOnlyPiApiKeyCredentials(dynamic.authPath, provider)).rejects.toThrow(
+      `no static API key for provider: ${provider}`,
+    );
   });
 });

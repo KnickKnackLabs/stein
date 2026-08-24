@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  SessionAgent,
-  type SessionTurnParticipant,
-} from "../../src/session/session-agent.ts";
+import { SessionAgent, type SessionTurnParticipant } from "../../src/session/session-agent.ts";
 import type { SessionTurn } from "../../src/session/session-turn.ts";
 import { FakePiSession } from "../support/fake-pi-session.ts";
 
@@ -53,11 +50,15 @@ describe("SessionAgent", () => {
     let releasePrompt = () => {};
     const session = new FakePiSession();
     session.responses = [["first"]];
-    session.events = [{
-      type: "message_end",
-      message: { role: "assistant", stopReason: "stop" },
-    }];
-    session.promptGate = new Promise<void>((resolve) => { releasePrompt = resolve; });
+    session.events = [
+      {
+        type: "message_end",
+        message: { role: "assistant", stopReason: "stop" },
+      },
+    ];
+    session.promptGate = new Promise<void>((resolve) => {
+      releasePrompt = resolve;
+    });
     const agent = new SessionAgent({ conversationId, session });
     const first = agent.respond(turn())[Symbol.asyncIterator]();
 
@@ -89,10 +90,12 @@ describe("SessionAgent", () => {
 
     expect(session.abortCount).toBe(1);
     expect(session.sessionManager.branches).toEqual(["committed-leaf"]);
-    expect(session.sessionManager.customEntries).toEqual([{
-      type: "stein.turn_rollback",
-      data: { checkpoint: "committed-leaf" },
-    }]);
+    expect(session.sessionManager.customEntries).toEqual([
+      {
+        type: "stein.turn_rollback",
+        data: { checkpoint: "committed-leaf" },
+      },
+    ]);
     expect(participant.value).toBe(1);
     expect(participant.restoreCount).toBe(1);
   });
@@ -112,9 +115,7 @@ describe("SessionAgent", () => {
       turnParticipant: participant,
     });
 
-    await expect(collect(agent.respond(turn()))).rejects.toThrow(
-      "fictional prompt failure",
-    );
+    await expect(collect(agent.respond(turn()))).rejects.toThrow("fictional prompt failure");
     expect(participant.beginCount).toBe(1);
     expect(participant.value).toBe(0);
     expect(participant.restoreCount).toBe(1);

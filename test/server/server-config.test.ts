@@ -26,24 +26,32 @@ describe("server configuration", () => {
   });
 
   test("fails closed when required config is absent or relative", () => {
-    expect(() => serverConfigFromMiseEnvironment({
-      ...valid,
-      usage_pi_model: undefined,
-    })).toThrow("usage_pi_model is required");
-    expect(() => serverConfigFromMiseEnvironment({
-      ...valid,
-      usage_workspace: "relative",
-    })).toThrow("--workspace must be an absolute path");
+    expect(() =>
+      serverConfigFromMiseEnvironment({
+        ...valid,
+        usage_pi_model: undefined,
+      }),
+    ).toThrow("usage_pi_model is required");
+    expect(() =>
+      serverConfigFromMiseEnvironment({
+        ...valid,
+        usage_workspace: "relative",
+      }),
+    ).toThrow("--workspace must be an absolute path");
   });
 
   test("rejects malformed or out-of-range listen ports", () => {
-    expect(() => serverConfigFromMiseEnvironment({
-      ...valid,
-      usage_listen: "127.0.0.1:8787junk",
-    })).toThrow("--listen must be HOST:PORT");
-    expect(() => serverConfigFromMiseEnvironment({
-      ...valid,
-      usage_listen: "127.0.0.1:0",
-    })).toThrow("--listen port must be between 1 and 65535");
+    expect(() =>
+      serverConfigFromMiseEnvironment({
+        ...valid,
+        usage_listen: "127.0.0.1:8787junk",
+      }),
+    ).toThrow("--listen must be HOST:PORT");
+    expect(() =>
+      serverConfigFromMiseEnvironment({
+        ...valid,
+        usage_listen: "127.0.0.1:0",
+      }),
+    ).toThrow("--listen port must be between 1 and 65535");
   });
 });

@@ -1,13 +1,5 @@
 import { constants } from "node:fs";
-import {
-  access,
-  chmod,
-  mkdir,
-  readdir,
-  readFile,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { access, chmod, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   createEditToolDefinition,
@@ -16,8 +8,8 @@ import {
   createLsToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
-  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import type { PiToolDefinition } from "../session/tool-definition.ts";
 import {
   createScopedFilesystemAccess,
   type ScopedFilesystemPolicy,
@@ -29,17 +21,14 @@ const PRIVATE_FILE_MODE = 0o600;
 export function createScopedFilesystemTools(
   cwd: string,
   policy: ScopedFilesystemPolicy,
-): ToolDefinition<any, any, any>[] {
+): PiToolDefinition[] {
   const resolvedCwd = resolve(cwd);
   const scoped = createScopedFilesystemAccess(resolvedCwd, policy);
 
   let readTool = createReadToolDefinition(resolvedCwd, {
     operations: {
       async access(path) {
-        await access(
-          await scoped.resolveRead(path, "read"),
-          constants.R_OK,
-        );
+        await access(await scoped.resolveRead(path, "read"), constants.R_OK);
       },
       async readFile(path) {
         return readFile(await scoped.resolveRead(path, "read"));
@@ -98,12 +87,7 @@ export function createScopedFilesystemTools(
           dot: true,
         })) {
           if (isIgnoredPath(path, options.ignore)) continue;
-          results.push(await scoped.formatSearchResult(
-            path,
-            searchRoot,
-            searchPath,
-            "find",
-          ));
+          results.push(await scoped.formatSearchResult(path, searchRoot, searchPath, "find"));
           if (results.length >= options.limit) break;
         }
         return results;
@@ -145,10 +129,7 @@ export function createScopedFilesystemTools(
   let editTool = createEditToolDefinition(resolvedCwd, {
     operations: {
       async access(path) {
-        await access(
-          await scoped.resolveWrite(path, "edit"),
-          constants.R_OK | constants.W_OK,
-        );
+        await access(await scoped.resolveWrite(path, "edit"), constants.R_OK | constants.W_OK);
       },
       async readFile(path) {
         return readFile(await scoped.resolveWrite(path, "edit"));
@@ -169,17 +150,14 @@ export function createScopedFilesystemTools(
   return [readTool, grepTool, findTool, lsTool, writeTool, editTool];
 }
 
-function withPromptGuideline<T extends ToolDefinition<any, any, any>>(
-  tool: T,
-  guideline: string,
-): T {
+function withPromptGuideline<T extends PiToolDefinition>(tool: T, guideline: string): T {
   return {
     ...tool,
     promptGuidelines: [...(tool.promptGuidelines ?? []), guideline],
   };
 }
 
-function withTranslatedGrepPath<T extends ToolDefinition<any, any, any>>(
+function withTranslatedGrepPath<T extends PiToolDefinition>(
   tool: T,
   resolveSearchPath: (path: string) => Promise<string>,
   cwd: string,
@@ -191,18 +169,12 @@ function withTranslatedGrepPath<T extends ToolDefinition<any, any, any>>(
       const grepArgs = args as { path?: string };
       const requestedPath = grepArgs.path || ".";
       const hostPath = await resolveSearchPath(resolve(cwd, requestedPath));
-      return execute(
-        toolCallId,
-        { ...grepArgs, path: hostPath },
-        signal,
-        onUpdate,
-        context,
-      );
+      return execute(toolCallId, { ...grepArgs, path: hostPath }, signal, onUpdate, context);
     },
   };
 }
 
-function withRedactedErrors<T extends ToolDefinition<any, any, any>>(
+function withRedactedErrors<T extends PiToolDefinition>(
   tool: T,
   redact: (error: unknown) => Error,
 ): T {
@@ -238,7 +210,5 @@ function isIgnoredPath(path: string, ignorePatterns: string[]): boolean {
 }
 
 function errorCode(error: unknown): string | undefined {
-  return error && typeof error === "object" && "code" in error
-    ? String(error.code)
-    : undefined;
+  return error && typeof error === "object" && "code" in error ? String(error.code) : undefined;
 }

@@ -8,18 +8,23 @@ import {
 
 describe("OpenAI chat completion contract", () => {
   test("normalizes visible messages and attached text", () => {
-    expect(parseChatCompletion({
-      model: "test/model",
-      stream: true,
-      messages: [
-        { role: "assistant", content: "Earlier" },
+    expect(
+      parseChatCompletion(
         {
-          role: "user",
-          content: "Continue",
-          attachments: [{ name: "fictional.txt", text: "Attached text" }],
+          model: "test/model",
+          stream: true,
+          messages: [
+            { role: "assistant", content: "Earlier" },
+            {
+              role: "user",
+              content: "Continue",
+              attachments: [{ name: "fictional.txt", text: "Attached text" }],
+            },
+          ],
         },
-      ],
-    }, "test/model")).toEqual([
+        "test/model",
+      ),
+    ).toEqual([
       { role: "assistant", content: "Earlier", attachments: [] },
       {
         role: "user",
@@ -30,69 +35,110 @@ describe("OpenAI chat completion contract", () => {
   });
 
   test("requires a streaming request for the configured model", () => {
-    expect(() => parseChatCompletion({
-      model: "other/model",
-      stream: true,
-      messages: [{ role: "user", content: "Hello" }],
-    }, "test/model")).toThrow("model must be \"test/model\"");
-    expect(() => parseChatCompletion({
-      model: "test/model",
-      stream: false,
-      messages: [{ role: "user", content: "Hello" }],
-    }, "test/model")).toThrow(InvalidChatCompletionError);
+    expect(() =>
+      parseChatCompletion(
+        {
+          model: "other/model",
+          stream: true,
+          messages: [{ role: "user", content: "Hello" }],
+        },
+        "test/model",
+      ),
+    ).toThrow('model must be "test/model"');
+    expect(() =>
+      parseChatCompletion(
+        {
+          model: "test/model",
+          stream: false,
+          messages: [{ role: "user", content: "Hello" }],
+        },
+        "test/model",
+      ),
+    ).toThrow(InvalidChatCompletionError);
   });
 
   test("rejects a request that cannot begin a user turn", () => {
-    expect(() => parseChatCompletion({
-      model: "test/model",
-      stream: true,
-      messages: [{ role: "assistant", content: "No user turn" }],
-    }, "test/model")).toThrow("Last message must be a user message");
+    expect(() =>
+      parseChatCompletion(
+        {
+          model: "test/model",
+          stream: true,
+          messages: [{ role: "assistant", content: "No user turn" }],
+        },
+        "test/model",
+      ),
+    ).toThrow("Last message must be a user message");
   });
 
   test("rejects empty user turns before opening a stream", () => {
-    expect(() => parseChatCompletion({
-      model: "test/model",
-      stream: true,
-      messages: [{
-        role: "user",
-        content: "  ",
-        attachments: [{ name: "empty.txt", text: "\n" }],
-      }],
-    }, "test/model")).toThrow("user turn must contain text or non-empty attached text");
+    expect(() =>
+      parseChatCompletion(
+        {
+          model: "test/model",
+          stream: true,
+          messages: [
+            {
+              role: "user",
+              content: "  ",
+              attachments: [{ name: "empty.txt", text: "\n" }],
+            },
+          ],
+        },
+        "test/model",
+      ),
+    ).toThrow("user turn must contain text or non-empty attached text");
   });
 
   test("enforces aggregate message, attachment, and UTF-8 text limits", () => {
-    expect(() => parseChatCompletion({
-      model: "test/model",
-      stream: true,
-      messages: Array.from(
-        { length: CHAT_COMPLETION_LIMITS.messages + 1 },
-        () => ({ role: "user", content: "text" }),
+    expect(() =>
+      parseChatCompletion(
+        {
+          model: "test/model",
+          stream: true,
+          messages: Array.from({ length: CHAT_COMPLETION_LIMITS.messages + 1 }, () => ({
+            role: "user",
+            content: "text",
+          })),
+        },
+        "test/model",
       ),
-    }, "test/model")).toThrow(`at most ${CHAT_COMPLETION_LIMITS.messages} entries`);
+    ).toThrow(`at most ${CHAT_COMPLETION_LIMITS.messages} entries`);
 
-    expect(() => parseChatCompletion({
-      model: "test/model",
-      stream: true,
-      messages: [{
-        role: "user",
-        content: "text",
-        attachments: Array.from(
-          { length: CHAT_COMPLETION_LIMITS.attachments + 1 },
-          (_, index) => ({ name: `${index}.txt`, text: "text" }),
-        ),
-      }],
-    }, "test/model")).toThrow(`at most ${CHAT_COMPLETION_LIMITS.attachments} attachments`);
+    expect(() =>
+      parseChatCompletion(
+        {
+          model: "test/model",
+          stream: true,
+          messages: [
+            {
+              role: "user",
+              content: "text",
+              attachments: Array.from(
+                { length: CHAT_COMPLETION_LIMITS.attachments + 1 },
+                (_, index) => ({ name: `${index}.txt`, text: "text" }),
+              ),
+            },
+          ],
+        },
+        "test/model",
+      ),
+    ).toThrow(`at most ${CHAT_COMPLETION_LIMITS.attachments} attachments`);
 
-    expect(() => parseChatCompletion({
-      model: "test/model",
-      stream: true,
-      messages: [{
-        role: "user",
-        content: "a".repeat(CHAT_COMPLETION_LIMITS.textBytes + 1),
-      }],
-    }, "test/model")).toThrow(`at most ${CHAT_COMPLETION_LIMITS.textBytes} bytes`);
+    expect(() =>
+      parseChatCompletion(
+        {
+          model: "test/model",
+          stream: true,
+          messages: [
+            {
+              role: "user",
+              content: "a".repeat(CHAT_COMPLETION_LIMITS.textBytes + 1),
+            },
+          ],
+        },
+        "test/model",
+      ),
+    ).toThrow(`at most ${CHAT_COMPLETION_LIMITS.textBytes} bytes`);
   });
 
   test("encodes one OpenAI-compatible SSE chunk", () => {

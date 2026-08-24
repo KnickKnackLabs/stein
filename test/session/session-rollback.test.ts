@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { SessionAgent, type PiSession } from "../../src/session/session-agent.ts";
+import { type PiSession, SessionAgent } from "../../src/session/session-agent.ts";
 
 const roots: string[] = [];
 
@@ -38,9 +38,13 @@ class SessionBackend implements PiSession {
   abortCount = 0;
 
   constructor(readonly sessionManager: SessionManager) {}
-  subscribe(): () => void { return () => {}; }
+  subscribe(): () => void {
+    return () => {};
+  }
   async prompt(): Promise<void> {}
-  async abort(): Promise<void> { this.abortCount += 1; }
+  async abort(): Promise<void> {
+    this.abortCount += 1;
+  }
   dispose(): void {}
 }
 

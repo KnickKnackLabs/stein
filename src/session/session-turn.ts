@@ -11,10 +11,7 @@ type SerializedTurn = Readonly<{
   attachments: readonly SessionAttachment[];
 }>;
 
-export function serializeSessionTurn(
-  expectedConversationId: string,
-  turn: SessionTurn,
-): string {
+export function serializeSessionTurn(expectedConversationId: string, turn: SessionTurn): string {
   if (turn.conversationId !== expectedConversationId) {
     throw new Error(
       `Conversation mismatch: expected ${JSON.stringify(expectedConversationId)}, received ${JSON.stringify(turn.conversationId)}`,

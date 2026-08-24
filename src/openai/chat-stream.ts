@@ -34,13 +34,29 @@ export function streamChatCompletion(
       request.signal.addEventListener("abort", abortListener, { once: true });
 
       try {
-        enqueue(controller, encoder, completionId, created, modelId, {
-          role: "assistant",
-        }, null);
+        enqueue(
+          controller,
+          encoder,
+          completionId,
+          created,
+          modelId,
+          {
+            role: "assistant",
+          },
+          null,
+        );
         for await (const delta of turn.deltas) {
-          enqueue(controller, encoder, completionId, created, modelId, {
-            content: delta,
-          }, null);
+          enqueue(
+            controller,
+            encoder,
+            completionId,
+            created,
+            modelId,
+            {
+              content: delta,
+            },
+            null,
+          );
         }
         enqueue(controller, encoder, completionId, created, modelId, {}, "stop");
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -75,19 +91,12 @@ function enqueue(
   delta: Readonly<Record<string, string>>,
   finishReason: "stop" | null,
 ): void {
-  controller.enqueue(encoder.encode(chatCompletionChunk(
-    id,
-    created,
-    modelId,
-    delta,
-    finishReason,
-  )));
+  controller.enqueue(
+    encoder.encode(chatCompletionChunk(id, created, modelId, delta, finishReason)),
+  );
 }
 
-function failStream(
-  controller: ReadableStreamDefaultController<Uint8Array>,
-  error: unknown,
-): void {
+function failStream(controller: ReadableStreamDefaultController<Uint8Array>, error: unknown): void {
   try {
     controller.error(error);
   } catch {

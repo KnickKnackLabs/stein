@@ -35,23 +35,23 @@ describe("conversation workspace", () => {
     const outside = await createRoot();
     const linkedRoot = join(root, "linked-root");
     await symlink(outside, linkedRoot);
-    await expect(
-      prepareConversationWorkspace(linkedRoot, "a".repeat(64)),
-    ).rejects.toThrow("regular directory");
+    await expect(prepareConversationWorkspace(linkedRoot, "a".repeat(64))).rejects.toThrow(
+      "regular directory",
+    );
 
     const workspaceRoot = join(root, "workspaces");
     await mkdir(workspaceRoot);
     const linkedConversation = join(workspaceRoot, "b".repeat(64));
     await symlink(outside, linkedConversation);
-    await expect(
-      prepareConversationWorkspace(workspaceRoot, "b".repeat(64)),
-    ).rejects.toThrow("regular directory");
+    await expect(prepareConversationWorkspace(workspaceRoot, "b".repeat(64))).rejects.toThrow(
+      "regular directory",
+    );
 
     const fileConversation = join(workspaceRoot, "c".repeat(64));
     await writeFile(fileConversation, "not a workspace");
-    await expect(
-      prepareConversationWorkspace(workspaceRoot, "c".repeat(64)),
-    ).rejects.toThrow("regular directory");
+    await expect(prepareConversationWorkspace(workspaceRoot, "c".repeat(64))).rejects.toThrow(
+      "regular directory",
+    );
   });
 });
 

@@ -1,8 +1,8 @@
 import { constants } from "node:fs";
-import { open } from "node:fs/promises";
+import { type FileHandle, open } from "node:fs/promises";
 
 export async function readPrivateTextFile(path: string, label: string): Promise<string> {
-  let file;
+  let file: FileHandle;
   try {
     file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (error) {
@@ -24,10 +24,7 @@ export async function readPrivateTextFile(path: string, label: string): Promise<
   }
 }
 
-export async function readPrivateTextLines(
-  path: string,
-  label: string,
-): Promise<string[]> {
+export async function readPrivateTextLines(path: string, label: string): Promise<string[]> {
   return (await readPrivateTextFile(path, label))
     .split("\n")
     .map((line) => line.trim())

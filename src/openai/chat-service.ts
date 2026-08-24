@@ -4,19 +4,13 @@ import {
   type ConversationHistoryStore,
 } from "../conversation/conversation.ts";
 import {
-  ConversationRegistry,
   type ConversationAgentFactory,
+  ConversationRegistry,
 } from "../conversation/conversation-registry.ts";
 import type { AttachmentNormalizer } from "./attachment-normalizer.ts";
-import {
-  InvalidChatCompletionError,
-  parseChatCompletion,
-} from "./chat-completion.ts";
+import { InvalidChatCompletionError, parseChatCompletion } from "./chat-completion.ts";
 import { streamChatCompletion } from "./chat-stream.ts";
-import type {
-  RequestIdentity,
-  RequestIdentityResolver,
-} from "./request-identity.ts";
+import type { RequestIdentity, RequestIdentityResolver } from "./request-identity.ts";
 
 export type OpenAIChatServiceOptions = Readonly<{
   authorizedTokens: readonly string[];
@@ -92,11 +86,7 @@ export class OpenAIChatService {
     }
 
     try {
-      const messages = parseChatCompletion(
-        body,
-        this.#modelId,
-        this.#normalizeAttachments,
-      );
+      const messages = parseChatCompletion(body, this.#modelId, this.#normalizeAttachments);
       const turn = await this.#registry.start(identity.userId, identity.chatId, messages);
       return streamChatCompletion(request, turn, this.#modelId);
     } catch (error) {

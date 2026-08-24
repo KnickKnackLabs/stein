@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  subscribeToSessionActivity,
   type SessionActivityEvent,
+  subscribeToSessionActivity,
 } from "../../src/session/activity-events.ts";
 
 const roots = [
@@ -49,7 +49,7 @@ class ManualClock {
       const next = [...this.timers.entries()]
         .filter(([, timer]) => timer.at <= target)
         .sort(([firstId, first], [secondId, second]) =>
-          first.at === second.at ? firstId - secondId : first.at - second.at
+          first.at === second.at ? firstId - secondId : first.at - second.at,
         )[0];
       if (!next) break;
       const [id, timer] = next;
@@ -61,11 +61,7 @@ class ManualClock {
   }
 }
 
-function startEvent(
-  toolCallId: string,
-  toolName: string,
-  args: Record<string, unknown>,
-): unknown {
+function startEvent(toolCallId: string, toolName: string, args: Record<string, unknown>): unknown {
   return { type: "tool_execution_start", toolCallId, toolName, args };
 }
 
@@ -103,40 +99,50 @@ function fixture() {
 describe("session activity events", () => {
   test("emits one structured completion with a safe virtual target", () => {
     const { source, clock, events } = fixture();
-    source.emit(startEvent("quick", "read", {
-      path: "notes/observations.md",
-      secret: "must-not-appear",
-    }));
+    source.emit(
+      startEvent("quick", "read", {
+        path: "notes/observations.md",
+        secret: "must-not-appear",
+      }),
+    );
     clock.advance(42);
-    source.emit(endEvent("quick", "read", false, {
-      content: [{ type: "text", text: "private result" }],
-    }));
+    source.emit(
+      endEvent("quick", "read", false, {
+        content: [{ type: "text", text: "private result" }],
+      }),
+    );
 
-    expect(events).toEqual([{
-      type: "tool",
-      toolName: "read",
-      target: { kind: "virtual", path: "notes/observations.md" },
-      status: "ok",
-      durationMs: 42,
-    }]);
+    expect(events).toEqual([
+      {
+        type: "tool",
+        toolName: "read",
+        target: { kind: "virtual", path: "notes/observations.md" },
+        status: "ok",
+        durationMs: 42,
+      },
+    ]);
     expect(JSON.stringify(events)).not.toContain("must-not-appear");
     expect(JSON.stringify(events)).not.toContain("private result");
   });
 
   test("emits delayed running and correlated completion events", () => {
     const { source, clock, events } = fixture();
-    source.emit(startEvent("slow", "write", {
-      path: "conversation/result.md",
-    }));
+    source.emit(
+      startEvent("slow", "write", {
+        path: "conversation/result.md",
+      }),
+    );
     clock.advance(999);
     expect(events).toEqual([]);
     clock.advance(1);
-    expect(events).toEqual([{
-      type: "tool",
-      toolName: "write",
-      target: { kind: "virtual", path: "conversation/result.md" },
-      status: "running",
-    }]);
+    expect(events).toEqual([
+      {
+        type: "tool",
+        toolName: "write",
+        target: { kind: "virtual", path: "conversation/result.md" },
+        status: "running",
+      },
+    ]);
     clock.advance(4_200);
     source.emit(endEvent("slow", "write", true));
 
@@ -153,9 +159,11 @@ describe("session activity events", () => {
     const { source, clock, events } = fixture();
     source.emit(startEvent("first", "read", { path: "notes/first.md" }));
     clock.advance(100);
-    source.emit(startEvent("second", "edit", {
-      path: "conversation/result.md",
-    }));
+    source.emit(
+      startEvent("second", "edit", {
+        path: "conversation/result.md",
+      }),
+    );
     clock.advance(150);
     source.emit(endEvent("first", "read", true));
     clock.advance(50);
@@ -181,19 +189,25 @@ describe("session activity events", () => {
 
   test("virtualizes scoped absolute targets and redacts every other path", () => {
     const { source, clock, events } = fixture();
-    source.emit(startEvent("inside", "read", {
-      path: "/private/product/notes/guidance.md",
-    }));
+    source.emit(
+      startEvent("inside", "read", {
+        path: "/private/product/notes/guidance.md",
+      }),
+    );
     clock.advance(5);
     source.emit(endEvent("inside", "read"));
-    source.emit(startEvent("outside", "read", {
-      path: "/private/other-client/note.md",
-    }));
+    source.emit(
+      startEvent("outside", "read", {
+        path: "/private/other-client/note.md",
+      }),
+    );
     clock.advance(7);
     source.emit(endEvent("outside", "read"));
-    source.emit(startEvent("unsafe", "read", {
-      path: "notes/safe.md\nforged status=ok",
-    }));
+    source.emit(
+      startEvent("unsafe", "read", {
+        path: "notes/safe.md\nforged status=ok",
+      }),
+    );
     clock.advance(1);
     source.emit(endEvent("unsafe", "read"));
 
@@ -210,11 +224,13 @@ describe("session activity events", () => {
     const { source, events } = fixture();
     source.emit(endEvent("missing", "read\nprivate", true));
 
-    expect(events).toEqual([{
-      type: "tool",
-      toolName: "<unsafe-tool>",
-      status: "error",
-    }]);
+    expect(events).toEqual([
+      {
+        type: "tool",
+        toolName: "<unsafe-tool>",
+        status: "error",
+      },
+    ]);
   });
 
   test("sink failures never affect the session and disposal cancels timers", () => {
@@ -251,26 +267,34 @@ describe("session activity events", () => {
   test("rejects unsafe activity configuration", () => {
     const source = new FakeActivitySource();
     const sink = () => {};
-    expect(() => subscribeToSessionActivity(source, {
-      roots: [{ virtualPath: "nested/path", directory: "/private/root" }],
-      sink,
-    })).toThrow("virtualPath");
-    expect(() => subscribeToSessionActivity(source, {
-      roots: [{ virtualPath: "notes", directory: "relative" }],
-      sink,
-    })).toThrow("directory must be absolute");
-    expect(() => subscribeToSessionActivity(source, {
-      roots: [
-        { virtualPath: "notes", directory: "/private/one" },
-        { virtualPath: "notes", directory: "/private/two" },
-      ],
-      sink,
-    })).toThrow("must be unique");
-    expect(() => subscribeToSessionActivity(source, {
-      roots: [],
-      sink,
-      runningThresholdMs: -1,
-    })).toThrow("non-negative");
+    expect(() =>
+      subscribeToSessionActivity(source, {
+        roots: [{ virtualPath: "nested/path", directory: "/private/root" }],
+        sink,
+      }),
+    ).toThrow("virtualPath");
+    expect(() =>
+      subscribeToSessionActivity(source, {
+        roots: [{ virtualPath: "notes", directory: "relative" }],
+        sink,
+      }),
+    ).toThrow("directory must be absolute");
+    expect(() =>
+      subscribeToSessionActivity(source, {
+        roots: [
+          { virtualPath: "notes", directory: "/private/one" },
+          { virtualPath: "notes", directory: "/private/two" },
+        ],
+        sink,
+      }),
+    ).toThrow("must be unique");
+    expect(() =>
+      subscribeToSessionActivity(source, {
+        roots: [],
+        sink,
+        runningThresholdMs: -1,
+      }),
+    ).toThrow("non-negative");
     expect(source.listenerCount).toBe(0);
   });
 });
