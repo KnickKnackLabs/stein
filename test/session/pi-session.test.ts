@@ -10,8 +10,9 @@ const config: PiSessionFactoryConfig = {
 };
 
 describe("Pi session factory", () => {
-  test("accepts complete explicit configuration without opening a session", () => {
+  test("accepts default and read-only Pi storage without opening a session", () => {
     expect(createPiSessionFactory(config)).toBeFunction();
+    expect(createPiSessionFactory({ ...config, piStorageMode: "read-only" })).toBeFunction();
   });
 
   test("rejects empty model and prompt configuration before SDK use", () => {

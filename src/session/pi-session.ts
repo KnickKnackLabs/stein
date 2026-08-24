@@ -7,9 +7,11 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { createReadOnlyPiModelRuntime } from "./read-only-pi-credentials.ts";
 import { SessionAgent } from "./session-agent.ts";
 
 export type ModelDescription = Readonly<{ provider: string; id: string }>;
+export type PiStorageMode = "default" | "read-only";
 
 export type PiSessionRecovery = Readonly<{
   committedLeafId: string | null;
@@ -21,6 +23,7 @@ export type PiSessionFactoryConfig = Readonly<{
   workspaceDirectory: string;
   sessionDirectory: string;
   agentDirectory: string;
+  piStorageMode?: PiStorageMode;
 }>;
 
 export function createPiSessionFactory(config: PiSessionFactoryConfig) {
@@ -30,11 +33,16 @@ export function createPiSessionFactory(config: PiSessionFactoryConfig) {
     recovery?: PiSessionRecovery,
   ): Promise<SessionAgent> => {
     validateConversationId(conversationId);
-    const modelRuntime = await ModelRuntime.create({
-      authPath: join(config.agentDirectory, "auth.json"),
-      modelsPath: join(config.agentDirectory, "models.json"),
-      allowModelNetwork: false,
-    });
+    const modelRuntime = config.piStorageMode === "read-only"
+      ? await createReadOnlyPiModelRuntime(
+        config.agentDirectory,
+        config.model.provider,
+      )
+      : await ModelRuntime.create({
+        authPath: join(config.agentDirectory, "auth.json"),
+        modelsPath: join(config.agentDirectory, "models.json"),
+        allowModelNetwork: false,
+      });
     const model = modelRuntime.getModel(config.model.provider, config.model.id);
     if (!model) {
       throw new Error(`Pi model is not configured: ${config.model.provider}/${config.model.id}`);
@@ -121,6 +129,13 @@ function validateConfig(config: PiSessionFactoryConfig): void {
   requireAbsolutePath("workspaceDirectory", config.workspaceDirectory);
   requireAbsolutePath("sessionDirectory", config.sessionDirectory);
   requireAbsolutePath("agentDirectory", config.agentDirectory);
+  if (
+    config.piStorageMode !== undefined &&
+    config.piStorageMode !== "default" &&
+    config.piStorageMode !== "read-only"
+  ) {
+    throw new Error("piStorageMode must be default or read-only");
+  }
 }
 
 function validateConversationId(value: string): void {
