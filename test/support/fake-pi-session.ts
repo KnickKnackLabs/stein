@@ -26,6 +26,7 @@ export class FakePiSession implements PiSession {
   readonly prompts: string[] = [];
   responses: string[][] = [];
   defaultResponse: string[] = [];
+  events: unknown[] = [];
   failure: unknown;
   shouldFail = false;
   promptGate: Promise<void> | undefined;
@@ -47,6 +48,9 @@ export class FakePiSession implements PiSession {
       for (const listener of this.#listeners) {
         listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta } });
       }
+    }
+    for (const event of this.events) {
+      for (const listener of this.#listeners) listener(event);
     }
     await this.promptGate;
     if (this.abortCount > 0) throw new Error("deterministic abort");

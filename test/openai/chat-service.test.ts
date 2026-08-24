@@ -176,7 +176,7 @@ describe("OpenAIChatService", () => {
     let release = () => {};
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const { service } = harness((session) => {
-      session.defaultResponse = [];
+      session.defaultResponse = ["first response"];
       session.promptGate = gate;
     });
     const first = await service.fetch(chat([user("first")]));

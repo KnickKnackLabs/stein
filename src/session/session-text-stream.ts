@@ -4,6 +4,29 @@ export interface SessionTextSource {
   abort?(): Promise<void>;
 }
 
+export type SessionTerminalFailure =
+  | "assistant_error"
+  | "assistant_aborted"
+  | "assistant_length"
+  | "assistant_empty";
+
+const TERMINAL_FAILURE_MESSAGES: Readonly<Record<SessionTerminalFailure, string>> = {
+  assistant_error: "Pi assistant turn failed",
+  assistant_aborted: "Pi assistant turn aborted",
+  assistant_length: "Pi assistant turn reached its output limit",
+  assistant_empty: "Pi assistant turn produced no visible output",
+};
+
+export class SessionTerminalError extends Error {
+  override readonly name = "SessionTerminalError";
+  readonly code: SessionTerminalFailure;
+
+  constructor(code: SessionTerminalFailure) {
+    super(TERMINAL_FAILURE_MESSAGES[code]);
+    this.code = code;
+  }
+}
+
 type Waiter = {
   resolve(result: IteratorResult<string>): void;
   reject(error: unknown): void;
@@ -68,10 +91,15 @@ export async function* streamSessionText(
   input: string,
 ): AsyncIterable<string> {
   const output = new AsyncTextQueue();
-  const unsubscribe = session.subscribe((event) => {
-    const delta = textDelta(event);
-    if (delta !== undefined) output.push(delta);
-  });
+  const attempt = new AssistantAttemptBuffer();
+  let hasVisibleText = false;
+  const publish = (chunks: readonly string[]) => {
+    for (const chunk of chunks) {
+      hasVisibleText ||= /\S/u.test(chunk);
+      output.push(chunk);
+    }
+  };
+  const unsubscribe = session.subscribe((event) => publish(attempt.accept(event)));
 
   let completion: Promise<void>;
   try {
@@ -84,7 +112,13 @@ export async function* streamSessionText(
   completion.then(
     () => {
       completionSettled = true;
-      output.close();
+      const result = attempt.finish();
+      if (result.failure) output.fail(result.failure);
+      else {
+        publish(result.chunks);
+        if (!hasVisibleText) output.fail(new SessionTerminalError("assistant_empty"));
+        else output.close();
+      }
     },
     (error: unknown) => {
       completionSettled = true;
@@ -101,11 +135,84 @@ export async function* streamSessionText(
   }
 }
 
+type AttemptResult = Readonly<{
+  chunks: readonly string[];
+  failure?: SessionTerminalError;
+}>;
+
+class AssistantAttemptBuffer {
+  #chunks: string[] = [];
+  #failure: SessionTerminalError | undefined;
+  #released = false;
+
+  accept(event: unknown): readonly string[] {
+    if (isRecord(event) && event.type === "agent_start") {
+      this.#chunks = [];
+      this.#failure = undefined;
+      this.#released = false;
+      return [];
+    }
+
+    const delta = textDelta(event);
+    if (delta !== undefined) {
+      this.#chunks.push(delta);
+      return [];
+    }
+
+    const failure = terminalFailure(event);
+    if (failure) {
+      this.#failure = failure;
+      return [];
+    }
+
+    if (isSuccessfulAssistantEnd(event)) return this.#release();
+    return [];
+  }
+
+  finish(): AttemptResult {
+    if (this.#failure) return { chunks: [], failure: this.#failure };
+    return { chunks: this.#release() };
+  }
+
+  #release(): readonly string[] {
+    if (this.#released) return [];
+    this.#released = true;
+    return this.#chunks.splice(0);
+  }
+}
+
 function textDelta(event: unknown): string | undefined {
   if (!isRecord(event) || event.type !== "message_update") return undefined;
   const update = event.assistantMessageEvent;
   if (!isRecord(update) || update.type !== "text_delta") return undefined;
   return typeof update.delta === "string" ? update.delta : undefined;
+}
+
+function isSuccessfulAssistantEnd(event: unknown): boolean {
+  if (!isRecord(event) || event.type !== "message_end") return false;
+  const message = event.message;
+  return isRecord(message) && message.role === "assistant" && message.stopReason === "stop";
+}
+
+function terminalFailure(event: unknown): SessionTerminalError | undefined {
+  if (!isRecord(event)) return undefined;
+  if (event.type === "message_update") {
+    const update = event.assistantMessageEvent;
+    if (!isRecord(update) || update.type !== "error") return undefined;
+    return new SessionTerminalError(
+      update.reason === "aborted" ? "assistant_aborted" : "assistant_error",
+    );
+  }
+  if (event.type !== "message_end") return undefined;
+  const message = event.message;
+  if (!isRecord(message) || message.role !== "assistant") return undefined;
+  if (message.stopReason === "length") {
+    return new SessionTerminalError("assistant_length");
+  }
+  if (message.stopReason !== "error" && message.stopReason !== "aborted") return undefined;
+  return new SessionTerminalError(
+    message.stopReason === "aborted" ? "assistant_aborted" : "assistant_error",
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

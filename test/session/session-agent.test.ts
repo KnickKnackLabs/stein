@@ -29,6 +29,10 @@ describe("SessionAgent", () => {
     let releasePrompt = () => {};
     const session = new FakePiSession();
     session.responses = [["first"]];
+    session.events = [{
+      type: "message_end",
+      message: { role: "assistant", stopReason: "stop" },
+    }];
     session.promptGate = new Promise<void>((resolve) => { releasePrompt = resolve; });
     const agent = new SessionAgent({ conversationId, session });
     const first = agent.respond(turn())[Symbol.asyncIterator]();
@@ -39,7 +43,8 @@ describe("SessionAgent", () => {
     releasePrompt();
     expect(await first.next()).toEqual({ value: undefined, done: true });
     session.promptGate = undefined;
-    expect(await collect(agent.respond(turn("Afterward.")))).toEqual([]);
+    session.defaultResponse = ["afterward"];
+    expect(await collect(agent.respond(turn("Afterward.")))).toEqual(["afterward"]);
   });
 
   test("checkpoints and rolls persistent session state back", async () => {
