@@ -120,13 +120,21 @@ describe("SessionAgent", () => {
     expect(participant.restoreCount).toBe(1);
   });
 
-  test("delegates abort and disposes once", async () => {
+  test("delegates abort and disposes resources and session once", async () => {
     const session = new FakePiSession();
-    const agent = new SessionAgent({ conversationId, session });
+    let resourceDisposeCount = 0;
+    const agent = new SessionAgent({
+      conversationId,
+      session,
+      onDispose: () => {
+        resourceDisposeCount += 1;
+      },
+    });
     await agent.abort();
     agent.dispose();
     agent.dispose();
     expect(session.abortCount).toBe(1);
+    expect(resourceDisposeCount).toBe(1);
     expect(session.disposeCount).toBe(1);
     expect(collect(agent.respond(turn()))).rejects.toThrow("disposed");
     expect(() => agent.checkpoint()).toThrow("disposed");

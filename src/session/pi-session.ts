@@ -8,6 +8,10 @@ import {
   SettingsManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import {
+  subscribeToSessionActivity,
+  type SessionActivityOptions,
+} from "./activity-events.ts";
 import { prepareConversationWorkspace } from "./conversation-workspace.ts";
 import { createReadOnlyPiModelRuntime } from "./read-only-pi-credentials.ts";
 import { SessionAgent } from "./session-agent.ts";
@@ -18,6 +22,15 @@ export type PiStorageMode = "default" | "read-only";
 export type PiSessionRecovery = Readonly<{
   committedLeafId: string | null;
 }>;
+
+export type PiSessionActivityContext = Readonly<{
+  conversationId: string;
+  workspaceDirectory: string;
+}>;
+
+export type PiSessionActivityFactory = (
+  context: PiSessionActivityContext,
+) => SessionActivityOptions | undefined;
 
 export type PiSessionFactoryConfig = Readonly<{
   model: ModelDescription;
@@ -31,6 +44,8 @@ export type PiSessionFactoryConfig = Readonly<{
   tools?: readonly string[];
   /** Custom tool definitions to register for this session factory. */
   customTools?: readonly ToolDefinition<any, any, any>[];
+  /** Optional per-session privacy-safe tool activity observer. */
+  activity?: PiSessionActivityFactory;
 }>;
 
 export function createPiSessionFactory(config: PiSessionFactoryConfig) {
@@ -106,7 +121,22 @@ export function createPiSessionFactory(config: PiSessionFactoryConfig) {
       const reason = modelFallbackMessage ?? extensionsResult.errors.map((entry) => entry.error).join("; ");
       throw new Error(`Pi session initialization failed: ${reason}`);
     }
-    return new SessionAgent({ conversationId, session });
+    let disposeActivity: (() => void) | undefined;
+    try {
+      const activity = config.activity?.({
+        conversationId,
+        workspaceDirectory: conversationWorkspace,
+      });
+      if (activity) disposeActivity = subscribeToSessionActivity(session, activity);
+    } catch (error) {
+      session.dispose();
+      throw error;
+    }
+    return new SessionAgent({
+      conversationId,
+      session,
+      ...(disposeActivity ? { onDispose: disposeActivity } : {}),
+    });
   };
 }
 
@@ -161,6 +191,9 @@ function validateConfig(config: PiSessionFactoryConfig): void {
   config.customTools?.forEach((tool, index) =>
     requireText(`customTools[${index}].name`, tool.name)
   );
+  if (config.activity !== undefined && typeof config.activity !== "function") {
+    throw new Error("activity must be a function");
+  }
 }
 
 function validateConversationId(value: string): void {

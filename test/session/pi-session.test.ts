@@ -16,6 +16,20 @@ describe("Pi session factory", () => {
     expect(createPiSessionFactory({ ...config, piStorageMode: "read-only" })).toBeFunction();
   });
 
+  test("accepts an optional per-session activity observer", () => {
+    expect(createPiSessionFactory({
+      ...config,
+      activity: ({ workspaceDirectory }) => ({
+        roots: [{ virtualPath: "conversation", directory: workspaceDirectory }],
+        sink: () => {},
+      }),
+    })).toBeFunction();
+    expect(() => createPiSessionFactory({
+      ...config,
+      activity: "enabled" as never,
+    })).toThrow("activity must be a function");
+  });
+
   test("accepts explicit built-in and custom tool composition", () => {
     expect(createPiSessionFactory({
       ...config,

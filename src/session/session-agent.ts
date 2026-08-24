@@ -31,12 +31,14 @@ export type SessionAgentOptions = Readonly<{
   conversationId: string;
   session: PiSession;
   turnParticipant?: SessionTurnParticipant;
+  onDispose?: () => void;
 }>;
 
 export class SessionAgent {
   readonly conversationId: string;
   readonly #session: PiSession;
   readonly #turnParticipant: SessionTurnParticipant | undefined;
+  readonly #onDispose: (() => void) | undefined;
   #active = false;
   #disposed = false;
 
@@ -45,6 +47,7 @@ export class SessionAgent {
     this.conversationId = options.conversationId;
     this.#session = options.session;
     this.#turnParticipant = options.turnParticipant;
+    this.#onDispose = options.onDispose;
   }
 
   async *respond(turn: SessionTurn): AsyncIterable<string> {
@@ -115,7 +118,11 @@ export class SessionAgent {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
-    this.#session.dispose();
+    try {
+      this.#onDispose?.();
+    } finally {
+      this.#session.dispose();
+    }
   }
 }
 
