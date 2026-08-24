@@ -7,6 +7,7 @@ import {
   ConversationRegistry,
   type ConversationAgentFactory,
 } from "../conversation/conversation-registry.ts";
+import type { AttachmentNormalizer } from "./attachment-normalizer.ts";
 import {
   InvalidChatCompletionError,
   parseChatCompletion,
@@ -21,6 +22,7 @@ export type OpenAIChatServiceOptions = Readonly<{
   authorizedTokens: readonly string[];
   modelId: string;
   resolveIdentity: RequestIdentityResolver;
+  normalizeAttachments?: AttachmentNormalizer;
   createAgent: ConversationAgentFactory;
   historyStore: ConversationHistoryStore;
 }>;
@@ -29,6 +31,7 @@ export class OpenAIChatService {
   readonly #authorizedTokens: readonly string[];
   readonly #modelId: string;
   readonly #resolveIdentity: RequestIdentityResolver;
+  readonly #normalizeAttachments: AttachmentNormalizer | undefined;
   readonly #registry: ConversationRegistry;
 
   constructor(options: OpenAIChatServiceOptions) {
@@ -42,9 +45,16 @@ export class OpenAIChatService {
     if (typeof options.resolveIdentity !== "function") {
       throw new Error("resolveIdentity must be a function");
     }
+    if (
+      options.normalizeAttachments !== undefined &&
+      typeof options.normalizeAttachments !== "function"
+    ) {
+      throw new Error("normalizeAttachments must be a function");
+    }
     this.#authorizedTokens = [...options.authorizedTokens];
     this.#modelId = options.modelId;
     this.#resolveIdentity = options.resolveIdentity;
+    this.#normalizeAttachments = options.normalizeAttachments;
     this.#registry = new ConversationRegistry(options.createAgent, options.historyStore);
   }
 
@@ -82,7 +92,11 @@ export class OpenAIChatService {
     }
 
     try {
-      const messages = parseChatCompletion(body, this.#modelId);
+      const messages = parseChatCompletion(
+        body,
+        this.#modelId,
+        this.#normalizeAttachments,
+      );
       const turn = await this.#registry.start(identity.userId, identity.chatId, messages);
       return streamChatCompletion(request, turn, this.#modelId);
     } catch (error) {

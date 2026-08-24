@@ -6,6 +6,7 @@ import {
   type ConversationMessage,
 } from "../../src/conversation/conversation.ts";
 import type { ConversationIdentity } from "../../src/conversation/conversation-registry.ts";
+import type { AttachmentNormalizer } from "../../src/openai/attachment-normalizer.ts";
 import { OpenAIChatService } from "../../src/openai/chat-service.ts";
 import type { RequestIdentityResolver } from "../../src/openai/request-identity.ts";
 import { openWebUiHeaderIdentityResolver } from "../../src/openwebui/request-identity.ts";
@@ -33,6 +34,7 @@ function harness(
   configure?: (session: FakePiSession, index: number) => void,
   authorizedTokens: readonly string[] = ["test-token"],
   resolveIdentity: RequestIdentityResolver = openWebUiHeaderIdentityResolver,
+  normalizeAttachments?: AttachmentNormalizer,
 ) {
   const identities: ConversationIdentity[] = [];
   const sessions: FakePiSession[] = [];
@@ -42,6 +44,7 @@ function harness(
     authorizedTokens,
     modelId: "test/deterministic",
     resolveIdentity,
+    ...(normalizeAttachments ? { normalizeAttachments } : {}),
     async createAgent(identity) {
       identities.push(identity);
       const session = new FakePiSession();
@@ -215,6 +218,35 @@ describe("OpenAIChatService", () => {
     expect(JSON.parse(sessions[0]?.prompts[0] ?? "")).toEqual({
       userText: "hello",
       attachments: [attachment],
+    });
+  });
+
+  test("applies an injected attachment normalizer before opening the turn", async () => {
+    const normalizeAttachments: AttachmentNormalizer = ({ content, attachments }) => ({
+      content: content.replace("[embedded]", "").trim(),
+      attachments: [
+        { name: "normalized.txt", text: "Normalized text." },
+        ...attachments,
+      ],
+    });
+    const { service, sessions } = harness(
+      undefined,
+      ["test-token"],
+      openWebUiHeaderIdentityResolver,
+      normalizeAttachments,
+    );
+    const response = await service.fetch(chat([user("Continue [embedded]", [
+      { name: "structured.txt", text: "Structured text." },
+    ])]));
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(JSON.parse(sessions[0]?.prompts[0] ?? "")).toEqual({
+      userText: "Continue",
+      attachments: [
+        { name: "normalized.txt", text: "Normalized text." },
+        { name: "structured.txt", text: "Structured text." },
+      ],
     });
   });
 

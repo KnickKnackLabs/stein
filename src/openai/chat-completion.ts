@@ -1,4 +1,5 @@
 import type { ConversationMessage } from "../conversation/conversation.ts";
+import type { AttachmentNormalizer } from "./attachment-normalizer.ts";
 
 export class InvalidChatCompletionError extends Error {
   override readonly name = "InvalidChatCompletionError";
@@ -13,6 +14,7 @@ export const CHAT_COMPLETION_LIMITS = Object.freeze({
 export function parseChatCompletion(
   value: unknown,
   modelId: string,
+  normalizeAttachments?: AttachmentNormalizer,
 ): ConversationMessage[] {
   if (!isRecord(value)) {
     throw new InvalidChatCompletionError("Request body must be an object");
@@ -34,7 +36,7 @@ export function parseChatCompletion(
 
   const budget: RequestBudget = { attachmentCount: 0, textBytes: 0 };
   const messages = value.messages.map((message, index) =>
-    parseMessage(message, index, budget)
+    parseMessage(message, index, budget, normalizeAttachments)
   );
   if (messages.at(-1)?.role !== "user") {
     throw new InvalidChatCompletionError("Last message must be a user message");
@@ -51,6 +53,7 @@ function parseMessage(
   value: unknown,
   index: number,
   budget: RequestBudget,
+  normalizeAttachments: AttachmentNormalizer | undefined,
 ): ConversationMessage {
   if (
     !isRecord(value) ||
@@ -62,37 +65,58 @@ function parseMessage(
     );
   }
 
-  addText(value.content, budget);
-  const attachments = parseAttachments(value.attachments, value.role, index, budget);
+  const structured = parseAttachments(value.attachments, value.role, index);
+  if (value.role === "assistant") {
+    addText(value.content, budget);
+    return { role: "assistant", content: value.content, attachments: [] };
+  }
+
+  const normalized = normalizeAttachments?.({
+    messageIndex: index,
+    content: value.content,
+    attachments: structured,
+  }) ?? { content: value.content, attachments: structured };
+  const { content, attachments } = validateNormalizedMessage(normalized, index);
+  accountMessage(content, attachments, budget);
   if (
-    value.role === "user" &&
-    !value.content.trim() &&
+    !content.trim() &&
     !attachments.some((attachment) => attachment.text.trim())
   ) {
     throw new InvalidChatCompletionError(
       `messages[${index}] user turn must contain text or non-empty attached text`,
     );
   }
-  return { role: value.role, content: value.content, attachments };
+  return { role: "user", content, attachments };
+}
+
+function validateNormalizedMessage(
+  value: unknown,
+  messageIndex: number,
+): Pick<ConversationMessage, "content" | "attachments"> {
+  if (
+    !isRecord(value) ||
+    typeof value.content !== "string" ||
+    !Array.isArray(value.attachments)
+  ) {
+    throw new InvalidChatCompletionError(
+      `messages[${messageIndex}] attachment normalizer must return content and attachments`,
+    );
+  }
+  return {
+    content: value.content,
+    attachments: parseAttachments(value.attachments, "user", messageIndex),
+  };
 }
 
 function parseAttachments(
   value: unknown,
   role: ConversationMessage["role"],
   messageIndex: number,
-  budget: RequestBudget,
 ): ConversationMessage["attachments"] {
   if (value === undefined) return [];
   if (role !== "user" || !Array.isArray(value)) {
     throw new InvalidChatCompletionError(
       `messages[${messageIndex}].attachments must be an array on a user message`,
-    );
-  }
-
-  budget.attachmentCount += value.length;
-  if (budget.attachmentCount > CHAT_COMPLETION_LIMITS.attachments) {
-    throw new InvalidChatCompletionError(
-      `messages must contain at most ${CHAT_COMPLETION_LIMITS.attachments} attachments`,
     );
   }
 
@@ -107,10 +131,26 @@ function parseAttachments(
         `messages[${messageIndex}].attachments[${attachmentIndex}] must contain name and text`,
       );
     }
-    addText(attachment.name, budget);
-    addText(attachment.text, budget);
     return { name: attachment.name, text: attachment.text };
   });
+}
+
+function accountMessage(
+  content: string,
+  attachments: ConversationMessage["attachments"],
+  budget: RequestBudget,
+): void {
+  budget.attachmentCount += attachments.length;
+  if (budget.attachmentCount > CHAT_COMPLETION_LIMITS.attachments) {
+    throw new InvalidChatCompletionError(
+      `messages must contain at most ${CHAT_COMPLETION_LIMITS.attachments} attachments`,
+    );
+  }
+  addText(content, budget);
+  for (const attachment of attachments) {
+    addText(attachment.name, budget);
+    addText(attachment.text, budget);
+  }
 }
 
 const textEncoder = new TextEncoder();
