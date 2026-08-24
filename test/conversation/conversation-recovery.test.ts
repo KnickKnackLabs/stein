@@ -79,10 +79,7 @@ function snapshot(label: string, committedLeafId: string): ConversationHistorySn
   };
 }
 
-function reopen(
-  state: Harness,
-  snapshot: ConversationHistorySnapshot,
-): SessionManager {
+function reopen(state: Harness, snapshot: ConversationHistorySnapshot): SessionManager {
   return openSessionManagerForRecovery(
     state.sessionFile,
     state.sessionDirectory,
@@ -179,7 +176,8 @@ describe("committed conversation recovery", () => {
 
     const stored = await state.historyStore.load(state.conversationId);
     const recovered = reopen(state, stored);
-    const persistedMessageRoles = recovered.getBranch()
+    const persistedMessageRoles = recovered
+      .getBranch()
       .filter((entry) => entry.type === "message")
       .map((entry) => entry.message.role);
 

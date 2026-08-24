@@ -3,6 +3,7 @@
 #MISE dir="{{config_root}}"
 set -euo pipefail
 
+mise exec -- readme build --check
 bun run check
 codebase lint "$MISE_CONFIG_ROOT"
 git diff --check

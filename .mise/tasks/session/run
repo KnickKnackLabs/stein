@@ -12,7 +12,7 @@
 import {
   runSession,
   sessionRunnerConfigFromMiseEnvironment,
-} from "../../../src/session/session-runner.ts";
+} from "../../../src/session/runner.ts";
 
 process.umask(0o077);
 runSession(sessionRunnerConfigFromMiseEnvironment()).catch((error: unknown) => {

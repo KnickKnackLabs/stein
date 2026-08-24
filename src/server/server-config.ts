@@ -19,15 +19,9 @@ export function serverConfigFromMiseEnvironment(
   return {
     hostname,
     port,
-    serviceTokenFile: absolute(
-      required(env, "usage_service_token_file"),
-      "--service-token-file",
-    ),
+    serviceTokenFile: absolute(required(env, "usage_service_token_file"), "--service-token-file"),
     model: parseModel(required(env, "usage_pi_model")),
-    systemPromptFile: absolute(
-      required(env, "usage_system_prompt_file"),
-      "--system-prompt-file",
-    ),
+    systemPromptFile: absolute(required(env, "usage_system_prompt_file"), "--system-prompt-file"),
     workspaceDirectory: absolute(required(env, "usage_workspace"), "--workspace"),
     sessionDirectory: absolute(required(env, "usage_session_dir"), "--session-dir"),
     agentDirectory: absolute(required(env, "usage_agent_dir"), "--agent-dir"),

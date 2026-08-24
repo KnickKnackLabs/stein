@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  serializeSessionTurn,
-  type SessionTurn,
-} from "../../src/session/session-turn.ts";
+import { type SessionTurn, serializeSessionTurn } from "../../src/session/turn.ts";
 
 const conversationId = "fictional-conversation";
 function turn(overrides: Partial<SessionTurn> = {}): SessionTurn {
@@ -30,19 +27,23 @@ describe("session turn", () => {
   });
 
   test("accepts attachment-only turns", () => {
-    const attachments = [{ name: "fictional-note.txt", text: "Attached context without a message." }];
-    expect(JSON.parse(serializeSessionTurn(conversationId, turn({ userText: "  ", attachments })))).toEqual({
+    const attachments = [
+      { name: "fictional-note.txt", text: "Attached context without a message." },
+    ];
+    expect(
+      JSON.parse(serializeSessionTurn(conversationId, turn({ userText: "  ", attachments }))),
+    ).toEqual({
       userText: "  ",
       attachments,
     });
   });
 
   test("rejects empty turns and unnamed attachments", () => {
-    expect(() => serializeSessionTurn(conversationId, turn({ userText: "", attachments: [] }))).toThrow(
-      "Turn must contain user text",
-    );
-    expect(() => serializeSessionTurn(conversationId, turn({ attachments: [{ name: " ", text: "context" }] }))).toThrow(
-      "attachments[0].name",
-    );
+    expect(() =>
+      serializeSessionTurn(conversationId, turn({ userText: "", attachments: [] })),
+    ).toThrow("Turn must contain user text");
+    expect(() =>
+      serializeSessionTurn(conversationId, turn({ attachments: [{ name: " ", text: "context" }] })),
+    ).toThrow("attachments[0].name");
   });
 });

@@ -3,9 +3,9 @@ import { renameSync } from "node:fs";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import {
-  emptyConversationHistorySnapshot,
   type ConversationHistorySnapshot,
   type ConversationHistoryStore,
+  emptyConversationHistorySnapshot,
   validateConversationHistorySnapshot,
 } from "./conversation.ts";
 
@@ -35,9 +35,7 @@ export class FileConversationHistoryStore implements ConversationHistoryStore {
       throw new Error("Invalid visible conversation history JSON", { cause: error });
     }
     if (Array.isArray(value)) {
-      throw new Error(
-        "Legacy array-only visible history requires an explicit migration or reset",
-      );
+      throw new Error("Legacy array-only visible history requires an explicit migration or reset");
     }
     if (!isConversationHistorySnapshot(value)) {
       throw new Error(`Invalid visible conversation history snapshot for ${conversationId}`);
@@ -86,9 +84,7 @@ export class FileConversationHistoryStore implements ConversationHistoryStore {
   }
 }
 
-function isConversationHistorySnapshot(
-  value: unknown,
-): value is ConversationHistorySnapshot {
+function isConversationHistorySnapshot(value: unknown): value is ConversationHistorySnapshot {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   return (
@@ -99,10 +95,5 @@ function isConversationHistorySnapshot(
 }
 
 function isMissing(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "ENOENT"
-  );
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }

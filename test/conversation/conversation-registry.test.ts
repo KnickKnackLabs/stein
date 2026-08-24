@@ -1,16 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
   ConversationConflictError,
-  emptyConversationHistorySnapshot,
   type ConversationHistorySnapshot,
   type ConversationHistoryStore,
   type ConversationMessage,
+  emptyConversationHistorySnapshot,
 } from "../../src/conversation/conversation.ts";
 import {
-  ConversationRegistry,
   type ConversationIdentity,
+  ConversationRegistry,
 } from "../../src/conversation/conversation-registry.ts";
-import { SessionAgent } from "../../src/session/session-agent.ts";
+import { SessionAgent } from "../../src/session/agent.ts";
 import { FakePiSession } from "../support/fake-pi-session.ts";
 
 class MemoryHistoryStore implements ConversationHistoryStore {
@@ -123,32 +123,35 @@ describe("ConversationRegistry", () => {
 
   test("rejects a divergent visible path and snapshots current attachments", async () => {
     const { registry, sessions } = harness();
-    const attachments = [{ name: "fictional.txt", text: "attached text" }];
-    const first = await registry.start("user", "chat", [user("first", attachments)]);
-    attachments[0]!.text = "mutated after start";
+    const attachment = { name: "fictional.txt", text: "attached text" };
+    const first = await registry.start("user", "chat", [user("first", [attachment])]);
+    attachment.text = "mutated after start";
     await consume(first.deltas);
     expect(JSON.parse(sessions[0]?.prompts[0] ?? "")).toEqual({
       userText: "first",
       attachments: [{ name: "fictional.txt", text: "attached text" }],
     });
 
-    await expect(registry.start("user", "chat", [
-      user("different"),
-      assistant("hello world"),
-      user("next"),
-    ])).rejects.toThrow(ConversationConflictError);
+    await expect(
+      registry.start("user", "chat", [user("different"), assistant("hello world"), user("next")]),
+    ).rejects.toThrow(ConversationConflictError);
   });
 
   test("rejects an overlapping turn until the active turn commits", async () => {
     let release = () => {};
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    const { registry } = harness((session) => { session.promptGate = gate; });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { registry } = harness((session) => {
+      session.promptGate = gate;
+    });
     const first = await registry.start("user", "chat", [user("first")]);
     const consuming = consume(first.deltas);
     await Promise.resolve();
 
-    await expect(registry.start("user", "chat", [user("overlap")]))
-      .rejects.toThrow(ConversationConflictError);
+    await expect(registry.start("user", "chat", [user("overlap")])).rejects.toThrow(
+      ConversationConflictError,
+    );
     release();
     await consuming;
   });
@@ -179,8 +182,12 @@ describe("ConversationRegistry", () => {
   test("keeps the conversation locked until rollback finishes", async () => {
     let releaseRollback = () => {};
     let markRollbackStarted = () => {};
-    const rollbackGate = new Promise<void>((resolve) => { releaseRollback = resolve; });
-    const rollbackStarted = new Promise<void>((resolve) => { markRollbackStarted = resolve; });
+    const rollbackGate = new Promise<void>((resolve) => {
+      releaseRollback = resolve;
+    });
+    const rollbackStarted = new Promise<void>((resolve) => {
+      markRollbackStarted = resolve;
+    });
     const { registry } = harness((session, index) => {
       if (index === 0) {
         session.shouldFail = true;
@@ -193,8 +200,9 @@ describe("ConversationRegistry", () => {
     const consuming = consume(failed.deltas);
     await rollbackStarted;
 
-    await expect(registry.start("user", "chat", [user("retry too soon")]))
-      .rejects.toThrow(ConversationConflictError);
+    await expect(registry.start("user", "chat", [user("retry too soon")])).rejects.toThrow(
+      ConversationConflictError,
+    );
     releaseRollback();
     await expect(consuming).rejects.toThrow("deterministic model failure");
     const retry = await registry.start("user", "chat", [user("retry")]);
@@ -220,11 +228,19 @@ describe("ConversationRegistry", () => {
     let releaseRollback = () => {};
     let markRollbackStarted = () => {};
     const historyStore = new MemoryHistoryStore();
-    historyStore.saveGate = new Promise<void>((resolve) => { releaseSave = resolve; });
-    const saveStarted = new Promise<void>((resolve) => { markSaveStarted = resolve; });
+    historyStore.saveGate = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    const saveStarted = new Promise<void>((resolve) => {
+      markSaveStarted = resolve;
+    });
     historyStore.saveStarted = markSaveStarted;
-    const rollbackGate = new Promise<void>((resolve) => { releaseRollback = resolve; });
-    const rollbackStarted = new Promise<void>((resolve) => { markRollbackStarted = resolve; });
+    const rollbackGate = new Promise<void>((resolve) => {
+      releaseRollback = resolve;
+    });
+    const rollbackStarted = new Promise<void>((resolve) => {
+      markRollbackStarted = resolve;
+    });
     const { registry, sessions } = harness((session, index) => {
       if (index === 0) {
         session.abortGate = rollbackGate;
@@ -240,7 +256,9 @@ describe("ConversationRegistry", () => {
     await saveStarted;
 
     let abortFinished = false;
-    const aborting = active.abort().then(() => { abortFinished = true; });
+    const aborting = active.abort().then(() => {
+      abortFinished = true;
+    });
     await Promise.resolve();
     expect(abortFinished).toBe(false);
     expect(historyStore.snapshots.size).toBe(0);
@@ -265,7 +283,9 @@ describe("ConversationRegistry", () => {
 
   test("rolls back explicit abort and stream cancellation", async () => {
     let release = () => {};
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const explicit = harness((session) => {
       session.promptGate = gate;
       session.releasePrompt = release;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { sessionRunnerConfigFromMiseEnvironment } from "../../src/session/session-runner.ts";
+import { sessionRunnerConfigFromMiseEnvironment } from "../../src/session/runner.ts";
 
 const environment = {
   usage_pi_model: "test/deterministic",
@@ -25,9 +25,15 @@ describe("session runner configuration", () => {
   });
 
   test("fails closed when required configuration is absent or relative", () => {
-    expect(() => sessionRunnerConfigFromMiseEnvironment({ ...environment, usage_pi_model: "deterministic" })).toThrow("PROVIDER/MODEL");
-    expect(() => sessionRunnerConfigFromMiseEnvironment({ ...environment, usage_prompt_file: "prompt.md" })).toThrow("--prompt-file must be an absolute path");
+    expect(() =>
+      sessionRunnerConfigFromMiseEnvironment({ ...environment, usage_pi_model: "deterministic" }),
+    ).toThrow("PROVIDER/MODEL");
+    expect(() =>
+      sessionRunnerConfigFromMiseEnvironment({ ...environment, usage_prompt_file: "prompt.md" }),
+    ).toThrow("--prompt-file must be an absolute path");
     const { usage_conversation_id: _, ...missingConversation } = environment;
-    expect(() => sessionRunnerConfigFromMiseEnvironment(missingConversation)).toThrow("usage_conversation_id is required");
+    expect(() => sessionRunnerConfigFromMiseEnvironment(missingConversation)).toThrow(
+      "usage_conversation_id is required",
+    );
   });
 });

@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
-  emptyConversationHistorySnapshot,
   type ConversationHistorySnapshot,
   type ConversationHistoryStore,
   type ConversationMessage,
+  emptyConversationHistorySnapshot,
 } from "../../src/conversation/conversation.ts";
 import type { ConversationIdentity } from "../../src/conversation/conversation-registry.ts";
+import type { AttachmentNormalizer } from "../../src/openai/attachment-normalizer.ts";
 import { OpenAIChatService } from "../../src/openai/chat-service.ts";
-import { SessionAgent } from "../../src/session/session-agent.ts";
+import type { RequestIdentityResolver } from "../../src/openai/request-identity.ts";
+import { openWebUiHeaderIdentityResolver } from "../../src/openwebui/request-identity.ts";
+import { SessionAgent } from "../../src/session/agent.ts";
 import { FakePiSession } from "../support/fake-pi-session.ts";
 
 class MemoryHistoryStore implements ConversationHistoryStore {
@@ -19,22 +22,26 @@ class MemoryHistoryStore implements ConversationHistoryStore {
     );
   }
 
-  async save(
-    conversationId: string,
-    snapshot: ConversationHistorySnapshot,
-  ): Promise<void> {
+  async save(conversationId: string, snapshot: ConversationHistorySnapshot): Promise<void> {
     this.snapshots.set(conversationId, structuredClone(snapshot));
   }
 }
 
-function harness(configure?: (session: FakePiSession, index: number) => void) {
+function harness(
+  configure?: (session: FakePiSession, index: number) => void,
+  authorizedTokens: readonly string[] = ["test-token"],
+  resolveIdentity: RequestIdentityResolver = openWebUiHeaderIdentityResolver,
+  normalizeAttachments?: AttachmentNormalizer,
+) {
   const identities: ConversationIdentity[] = [];
   const sessions: FakePiSession[] = [];
   const historyStore = new MemoryHistoryStore();
   const service = new OpenAIChatService({
     historyStore,
-    bearerToken: "test-token",
+    authorizedTokens,
     modelId: "test/deterministic",
+    resolveIdentity,
+    ...(normalizeAttachments ? { normalizeAttachments } : {}),
     async createAgent(identity) {
       identities.push(identity);
       const session = new FakePiSession();
@@ -92,18 +99,75 @@ function dataEvents(body: string): Array<Record<string, unknown>> {
 }
 
 describe("OpenAIChatService", () => {
+  test("accepts any value from a multi-token authorized set", async () => {
+    const { service } = harness(undefined, ["test-token", "second-token"]);
+    const accepted = await service.fetch(
+      new Request("http://localhost/v1/models", {
+        headers: { authorization: "Bearer second-token" },
+      }),
+    );
+    expect(accepted.status).toBe(200);
+
+    const rejected = await service.fetch(
+      new Request("http://localhost/v1/models", {
+        headers: { authorization: "Bearer unknown-token" },
+      }),
+    );
+    expect(rejected.status).toBe(401);
+  });
+
+  test("rejects an empty authorized-token set or value", () => {
+    expect(() => harness(undefined, [])).toThrow("authorizedTokens must not be empty");
+    expect(() => harness(undefined, ["test-token", " "])).toThrow(
+      "authorizedTokens must not contain an empty value",
+    );
+  });
+
+  test("uses an injected request identity and rejects blank resolver output", async () => {
+    let resolvedPath = "";
+    const resolveIdentity: RequestIdentityResolver = (identityRequest) => {
+      resolvedPath = new URL(identityRequest.url).pathname;
+      return { userId: "resolved-user", chatId: "resolved-chat" };
+    };
+    const { service, identities } = harness(undefined, ["test-token"], resolveIdentity);
+    const response = await service.fetch(
+      request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "test/deterministic",
+          stream: true,
+          messages: [user("hello")],
+        }),
+      }),
+    );
+    await response.text();
+
+    expect(resolvedPath).toBe("/v1/chat/completions");
+    expect(identities[0]).toMatchObject({
+      userId: "resolved-user",
+      chatId: "resolved-chat",
+    });
+
+    const { service: blankIdentity } = harness(undefined, ["test-token"], () => ({
+      userId: " ",
+      chatId: "resolved-chat",
+    }));
+    expect((await blankIdentity.fetch(chat([user("hello")]))).status).toBe(400);
+  });
+
   test("exposes health and protects every model endpoint", async () => {
     const { service } = harness();
     expect((await service.fetch(request("/health"))).status).toBe(200);
 
-    const unauthorized = await service.fetch(
-      new Request("http://localhost/v1/models"),
-    );
+    const unauthorized = await service.fetch(new Request("http://localhost/v1/models"));
     expect(unauthorized.status).toBe(401);
 
-    const wrongToken = await service.fetch(new Request("http://localhost/v1/models", {
-      headers: { authorization: "Bearer wrong-token" },
-    }));
+    const wrongToken = await service.fetch(
+      new Request("http://localhost/v1/models", {
+        headers: { authorization: "Bearer wrong-token" },
+      }),
+    );
     expect(wrongToken.status).toBe(401);
 
     const models = await service.fetch(request("/v1/models"));
@@ -115,26 +179,30 @@ describe("OpenAIChatService", () => {
 
   test("requires explicit Open WebUI identity and valid JSON", async () => {
     const { service } = harness();
-    const missingIdentity = await service.fetch(request("/v1/chat/completions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        model: "test/deterministic",
-        stream: true,
-        messages: [user("hello")],
+    const missingIdentity = await service.fetch(
+      request("/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "test/deterministic",
+          stream: true,
+          messages: [user("hello")],
+        }),
       }),
-    }));
+    );
     expect(missingIdentity.status).toBe(400);
 
-    const invalidJson = await service.fetch(request("/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-openwebui-user-id": "fictional-user",
-        "x-openwebui-chat-id": "fictional-chat",
-      },
-      body: "not-json",
-    }));
+    const invalidJson = await service.fetch(
+      request("/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-openwebui-user-id": "fictional-user",
+          "x-openwebui-chat-id": "fictional-chat",
+        },
+        body: "not-json",
+      }),
+    );
     expect(invalidJson.status).toBe(400);
   });
 
@@ -149,13 +217,40 @@ describe("OpenAIChatService", () => {
     const events = dataEvents(body) as Array<{
       choices: Array<{ delta: { content?: string } }>;
     }>;
-    expect(events
-      .map((event) => event.choices[0]?.delta.content)
-      .filter(Boolean)).toEqual(["hello", " world"]);
+    expect(events.map((event) => event.choices[0]?.delta.content).filter(Boolean)).toEqual([
+      "hello",
+      " world",
+    ]);
     expect(identities).toHaveLength(1);
     expect(JSON.parse(sessions[0]?.prompts[0] ?? "")).toEqual({
       userText: "hello",
       attachments: [attachment],
+    });
+  });
+
+  test("applies an injected attachment normalizer before opening the turn", async () => {
+    const normalizeAttachments: AttachmentNormalizer = ({ content, attachments }) => ({
+      content: content.replace("[embedded]", "").trim(),
+      attachments: [{ name: "normalized.txt", text: "Normalized text." }, ...attachments],
+    });
+    const { service, sessions } = harness(
+      undefined,
+      ["test-token"],
+      openWebUiHeaderIdentityResolver,
+      normalizeAttachments,
+    );
+    const response = await service.fetch(
+      chat([user("Continue [embedded]", [{ name: "structured.txt", text: "Structured text." }])]),
+    );
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(JSON.parse(sessions[0]?.prompts[0] ?? "")).toEqual({
+      userText: "Continue",
+      attachments: [
+        { name: "normalized.txt", text: "Normalized text." },
+        { name: "structured.txt", text: "Structured text." },
+      ],
     });
   });
 
@@ -174,9 +269,11 @@ describe("OpenAIChatService", () => {
 
   test("maps an overlapping conversation turn to conflict", async () => {
     let release = () => {};
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const { service } = harness((session) => {
-      session.defaultResponse = [];
+      session.defaultResponse = ["first response"];
       session.promptGate = gate;
     });
     const first = await service.fetch(chat([user("first")]));
@@ -193,11 +290,9 @@ describe("OpenAIChatService", () => {
     const first = await service.fetch(chat([user("first")]));
     await first.text();
 
-    const divergent = await service.fetch(chat([
-      user("different"),
-      assistant("hello world"),
-      user("second"),
-    ]));
+    const divergent = await service.fetch(
+      chat([user("different"), assistant("hello world"), user("second")]),
+    );
     expect(divergent.status).toBe(409);
   });
 
@@ -205,9 +300,11 @@ describe("OpenAIChatService", () => {
     const { service, sessions } = harness();
     const controller = new AbortController();
     controller.abort();
-    const response = await service.fetch(new Request(chat([user("first")]), {
-      signal: controller.signal,
-    }));
+    const response = await service.fetch(
+      new Request(chat([user("first")]), {
+        signal: controller.signal,
+      }),
+    );
 
     await response.text().catch(() => "aborted");
     await Bun.sleep(0);
@@ -217,16 +314,20 @@ describe("OpenAIChatService", () => {
 
   test("rolls back when the active request is aborted", async () => {
     let release = () => {};
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const { service, sessions } = harness((session) => {
       session.defaultResponse = [];
       session.promptGate = gate;
       session.releasePrompt = release;
     });
     const controller = new AbortController();
-    const response = await service.fetch(new Request(chat([user("first")]), {
-      signal: controller.signal,
-    }));
+    const response = await service.fetch(
+      new Request(chat([user("first")]), {
+        signal: controller.signal,
+      }),
+    );
     const body = response.text().catch(() => "aborted");
 
     controller.abort();
@@ -237,7 +338,9 @@ describe("OpenAIChatService", () => {
 
   test("rolls back when the response reader cancels", async () => {
     let release = () => {};
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const { service, sessions } = harness((session) => {
       session.defaultResponse = [];
       session.promptGate = gate;

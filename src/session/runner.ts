@@ -1,5 +1,6 @@
-import { chmod, mkdir, readFile } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
+import { readPrivateTextFile } from "../files/private-text-file.ts";
 import { createPiSessionFactory, type ModelDescription } from "./pi-session.ts";
 
 export type SessionRunnerConfig = Readonly<{
@@ -36,8 +37,8 @@ export function sessionRunnerConfigFromMiseEnvironment(
 
 export async function runSession(config: SessionRunnerConfig): Promise<void> {
   const [systemPrompt, prompt] = await Promise.all([
-    readFile(config.systemPromptFile, "utf8"),
-    readFile(config.promptFile, "utf8"),
+    readPrivateTextFile(config.systemPromptFile, "System prompt file"),
+    readPrivateTextFile(config.promptFile, "Prompt file"),
   ]);
   if (!systemPrompt.trim()) throw new Error("System prompt file is empty");
   if (!prompt.trim()) throw new Error("Prompt file is empty");
