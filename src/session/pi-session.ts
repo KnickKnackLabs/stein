@@ -8,6 +8,7 @@ import {
   SettingsManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { prepareConversationWorkspace } from "./conversation-workspace.ts";
 import { createReadOnlyPiModelRuntime } from "./read-only-pi-credentials.ts";
 import { SessionAgent } from "./session-agent.ts";
 
@@ -21,6 +22,7 @@ export type PiSessionRecovery = Readonly<{
 export type PiSessionFactoryConfig = Readonly<{
   model: ModelDescription;
   systemPrompt: string;
+  /** Private root containing one mode-0700 workspace per conversation. */
   workspaceDirectory: string;
   sessionDirectory: string;
   agentDirectory: string;
@@ -57,12 +59,16 @@ export function createPiSessionFactory(config: PiSessionFactoryConfig) {
     if (!model) {
       throw new Error(`Pi model is not configured: ${config.model.provider}/${config.model.id}`);
     }
+    const conversationWorkspace = await prepareConversationWorkspace(
+      config.workspaceDirectory,
+      conversationId,
+    );
     const settingsManager = SettingsManager.inMemory({
       compaction: { enabled: true },
       retry: { enabled: true, maxRetries: 3 },
     });
     const resourceLoader = new DefaultResourceLoader({
-      cwd: config.workspaceDirectory,
+      cwd: conversationWorkspace,
       agentDir: config.agentDirectory,
       settingsManager,
       systemPrompt: config.systemPrompt,
@@ -77,11 +83,11 @@ export function createPiSessionFactory(config: PiSessionFactoryConfig) {
     const sessionManager = openSessionManagerForRecovery(
       sessionFile,
       config.sessionDirectory,
-      config.workspaceDirectory,
+      conversationWorkspace,
       recovery,
     );
     const { session, extensionsResult, modelFallbackMessage } = await createAgentSession({
-      cwd: config.workspaceDirectory,
+      cwd: conversationWorkspace,
       agentDir: config.agentDirectory,
       modelRuntime,
       model,
