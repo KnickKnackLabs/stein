@@ -5,6 +5,7 @@ import {
   readPrivateTextLines,
 } from "../files/private-text-file.ts";
 import { OpenAIChatService } from "../openai/chat-service.ts";
+import { openWebUiHeaderIdentityResolver } from "../openwebui/request-identity.ts";
 import { createPiSessionFactory } from "../session/pi-session.ts";
 import type { ServerConfig } from "./server-config.ts";
 
@@ -46,6 +47,7 @@ export async function runServer(config: ServerConfig): Promise<never> {
   const service = new OpenAIChatService({
     authorizedTokens,
     modelId,
+    resolveIdentity: openWebUiHeaderIdentityResolver,
     historyStore: new FileConversationHistoryStore(config.sessionDirectory),
     createAgent: ({ conversationId }, snapshot) =>
       createSession(conversationId, { committedLeafId: snapshot.committedLeafId }),

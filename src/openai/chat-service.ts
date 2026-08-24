@@ -12,10 +12,15 @@ import {
   parseChatCompletion,
 } from "./chat-completion.ts";
 import { streamChatCompletion } from "./chat-stream.ts";
+import type {
+  RequestIdentity,
+  RequestIdentityResolver,
+} from "./request-identity.ts";
 
 export type OpenAIChatServiceOptions = Readonly<{
   authorizedTokens: readonly string[];
   modelId: string;
+  resolveIdentity: RequestIdentityResolver;
   createAgent: ConversationAgentFactory;
   historyStore: ConversationHistoryStore;
 }>;
@@ -23,6 +28,7 @@ export type OpenAIChatServiceOptions = Readonly<{
 export class OpenAIChatService {
   readonly #authorizedTokens: readonly string[];
   readonly #modelId: string;
+  readonly #resolveIdentity: RequestIdentityResolver;
   readonly #registry: ConversationRegistry;
 
   constructor(options: OpenAIChatServiceOptions) {
@@ -33,8 +39,12 @@ export class OpenAIChatService {
       throw new Error("authorizedTokens must not contain an empty value");
     }
     if (!options.modelId.trim()) throw new Error("modelId must not be empty");
+    if (typeof options.resolveIdentity !== "function") {
+      throw new Error("resolveIdentity must be a function");
+    }
     this.#authorizedTokens = [...options.authorizedTokens];
     this.#modelId = options.modelId;
+    this.#resolveIdentity = options.resolveIdentity;
     this.#registry = new ConversationRegistry(options.createAgent, options.historyStore);
   }
 
@@ -59,10 +69,10 @@ export class OpenAIChatService {
   }
 
   async #chat(request: Request): Promise<Response> {
-    const userId = request.headers.get("x-openwebui-user-id")?.trim();
-    const chatId = request.headers.get("x-openwebui-chat-id")?.trim();
-    if (!userId) return invalidResponse("Missing x-openwebui-user-id header");
-    if (!chatId) return invalidResponse("Missing x-openwebui-chat-id header");
+    const identity = this.#resolveIdentity(request);
+    if (!validIdentity(identity)) {
+      return invalidResponse("Missing or invalid request identity");
+    }
 
     let body: unknown;
     try {
@@ -73,7 +83,7 @@ export class OpenAIChatService {
 
     try {
       const messages = parseChatCompletion(body, this.#modelId);
-      const turn = await this.#registry.start(userId, chatId, messages);
+      const turn = await this.#registry.start(identity.userId, identity.chatId, messages);
       return streamChatCompletion(request, turn, this.#modelId);
     } catch (error) {
       if (error instanceof InvalidChatCompletionError) {
@@ -85,6 +95,10 @@ export class OpenAIChatService {
       throw error;
     }
   }
+}
+
+function validIdentity(identity: RequestIdentity | undefined): identity is RequestIdentity {
+  return Boolean(identity?.userId.trim() && identity.chatId.trim());
 }
 
 function authorized(request: Request, expected: readonly string[]): boolean {

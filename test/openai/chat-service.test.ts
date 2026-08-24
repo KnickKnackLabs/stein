@@ -7,6 +7,8 @@ import {
 } from "../../src/conversation/conversation.ts";
 import type { ConversationIdentity } from "../../src/conversation/conversation-registry.ts";
 import { OpenAIChatService } from "../../src/openai/chat-service.ts";
+import type { RequestIdentityResolver } from "../../src/openai/request-identity.ts";
+import { openWebUiHeaderIdentityResolver } from "../../src/openwebui/request-identity.ts";
 import { SessionAgent } from "../../src/session/session-agent.ts";
 import { FakePiSession } from "../support/fake-pi-session.ts";
 
@@ -30,6 +32,7 @@ class MemoryHistoryStore implements ConversationHistoryStore {
 function harness(
   configure?: (session: FakePiSession, index: number) => void,
   authorizedTokens: readonly string[] = ["test-token"],
+  resolveIdentity: RequestIdentityResolver = openWebUiHeaderIdentityResolver,
 ) {
   const identities: ConversationIdentity[] = [];
   const sessions: FakePiSession[] = [];
@@ -38,6 +41,7 @@ function harness(
     historyStore,
     authorizedTokens,
     modelId: "test/deterministic",
+    resolveIdentity,
     async createAgent(identity) {
       identities.push(identity);
       const session = new FakePiSession();
@@ -113,6 +117,38 @@ describe("OpenAIChatService", () => {
     expect(() => harness(undefined, ["test-token", " "])).toThrow(
       "authorizedTokens must not contain an empty value",
     );
+  });
+
+  test("uses an injected request identity and rejects blank resolver output", async () => {
+    let resolvedPath = "";
+    const resolveIdentity: RequestIdentityResolver = (identityRequest) => {
+      resolvedPath = new URL(identityRequest.url).pathname;
+      return { userId: "resolved-user", chatId: "resolved-chat" };
+    };
+    const { service, identities } = harness(undefined, ["test-token"], resolveIdentity);
+    const response = await service.fetch(request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "test/deterministic",
+        stream: true,
+        messages: [user("hello")],
+      }),
+    }));
+    await response.text();
+
+    expect(resolvedPath).toBe("/v1/chat/completions");
+    expect(identities[0]).toMatchObject({
+      userId: "resolved-user",
+      chatId: "resolved-chat",
+    });
+
+    const { service: blankIdentity } = harness(
+      undefined,
+      ["test-token"],
+      () => ({ userId: " ", chatId: "resolved-chat" }),
+    );
+    expect((await blankIdentity.fetch(chat([user("hello")]))).status).toBe(400);
   });
 
   test("exposes health and protects every model endpoint", async () => {
