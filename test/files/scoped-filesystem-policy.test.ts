@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createScopedFilesystemAccess } from "../../src/files/scoped-filesystem-policy.ts";
@@ -118,6 +118,7 @@ describe("scoped filesystem policy", () => {
     const outsideFile = join(fixture.outside, "private.md");
     await writeFile(outsideFile, "outside\n", { mode: 0o600 });
     await symlink(outsideFile, join(fixture.conversation, "linked.md"));
+    await link(outsideFile, join(fixture.conversation, "hard-linked.md"));
     const scoped = createScopedFilesystemAccess(fixture.root, {
       readRoots: [
         {
@@ -134,6 +135,10 @@ describe("scoped filesystem policy", () => {
         },
       ],
     });
+
+    await expect(scoped.resolveWrite("conversation/hard-linked.md", "write")).rejects.toThrow(
+      "multiple filesystem links",
+    );
 
     for (const path of [
       join(fixture.root, "conversation/../outside/private.md"),

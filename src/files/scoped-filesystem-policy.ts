@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, lstat, realpath } from "node:fs/promises";
+import { access, lstat, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 export type ScopedRoot = Readonly<{
@@ -246,6 +246,7 @@ async function assertWritableScopedPath(
   denyGlobs: readonly WriteDenyGlob[],
 ): Promise<ResolvedPath> {
   const scopedPath = await assertScopedPath(path, roots, action);
+  await assertNotHardLinkedFile(scopedPath.hostPath, action, path, roots);
   const requestedPathFromRoot = relative(scopedPath.root.path, scopedPath.hostPath).replaceAll(
     "\\",
     "/",
@@ -261,6 +262,23 @@ async function assertWritableScopedPath(
     throw protectedPathError(action, path, deniedBy.pattern, roots);
   }
   return scopedPath;
+}
+
+async function assertNotHardLinkedFile(
+  hostPath: string,
+  action: string,
+  requestedPath: string,
+  roots: readonly NormalizedRoot[],
+): Promise<void> {
+  try {
+    const metadata = await stat(hostPath);
+    if (metadata.isFile() && metadata.nlink > 1) {
+      throw hardLinkedPathError(action, requestedPath, roots);
+    }
+  } catch (error: unknown) {
+    if (errorCode(error) === "ENOENT") return;
+    throw error;
+  }
 }
 
 function compileWriteDenyGlobs(patterns: readonly string[]): WriteDenyGlob[] {
@@ -321,6 +339,16 @@ function isWithinRoot(path: string, root: string): boolean {
 function outsideRootsError(action: string, path: string, roots: readonly NormalizedRoot[]): Error {
   return new Error(
     `Access denied: cannot ${action} ${JSON.stringify(displayRequestedPath(path, roots))} outside allowed roots (${formatRoots(roots)}).`,
+  );
+}
+
+function hardLinkedPathError(
+  action: string,
+  path: string,
+  roots: readonly NormalizedRoot[],
+): Error {
+  return new Error(
+    `Access denied: cannot ${action} ${JSON.stringify(displayRequestedPath(path, roots))} because files with multiple filesystem links are not safe write targets.`,
   );
 }
 
