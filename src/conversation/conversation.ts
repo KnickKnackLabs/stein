@@ -274,6 +274,10 @@ function sameVisibleHistory(
   if (incoming.length !== stored.length) return false;
   return incoming.every((message, index) => {
     const expected = stored[index];
-    return expected?.role === message.role && expected.content === message.content;
+    if (expected?.role !== message.role) return false;
+    // Open WebUI strips outer assistant whitespace before replaying stored history.
+    return message.role === "assistant"
+      ? expected.content.trim() === message.content.trim()
+      : expected.content === message.content;
   });
 }

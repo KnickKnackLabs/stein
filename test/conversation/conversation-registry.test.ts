@@ -121,6 +121,39 @@ describe("ConversationRegistry", () => {
     expect(restarted.sessions).toHaveLength(1);
   });
 
+  test("accepts only outer assistant whitespace normalization", async () => {
+    const { registry, historyStore } = harness((session) => {
+      session.defaultResponse = ["\nhello world\n"];
+    });
+    const first = await registry.start("user", "chat", [user(" first ")]);
+    expect(await consume(first.deltas)).toBe("\nhello world\n");
+    expect(historyStore.snapshots.get(first.conversationId)?.messages).toEqual([
+      { role: "user", content: " first " },
+      { role: "assistant", content: "\nhello world\n" },
+    ]);
+
+    await expect(
+      registry.start("user", "chat", [user("first"), assistant("hello world"), user("second")]),
+    ).rejects.toThrow(ConversationConflictError);
+
+    const continued = await registry.start("user", "chat", [
+      user(" first "),
+      assistant("hello world"),
+      user("second"),
+    ]);
+    expect(await consume(continued.deltas)).toBe("\nhello world\n");
+
+    await expect(
+      registry.start("user", "chat", [
+        user(" first "),
+        assistant("hello world"),
+        user("second"),
+        assistant("hello changed"),
+        user("third"),
+      ]),
+    ).rejects.toThrow(ConversationConflictError);
+  });
+
   test("rejects a divergent visible path and snapshots current attachments", async () => {
     const { registry, sessions } = harness();
     const attachment = { name: "fictional.txt", text: "attached text" };
